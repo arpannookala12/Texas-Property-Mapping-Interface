@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, MapPin, DollarSign, Ruler, Home, FileText } from 'lucide-react';
 
 export interface PropertySubmission {

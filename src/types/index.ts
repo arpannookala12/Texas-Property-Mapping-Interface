@@ -43,6 +43,12 @@ export interface SearchFilters {
   maxPrice?: number;
   city?: string;
   state?: string;
+  minYearBuilt?: number;
+  maxYearBuilt?: number;
+  minSquareFootage?: number;
+  maxSquareFootage?: number;
+  bedrooms?: number;
+  bathrooms?: number;
 }
 
 export interface PropertySearchResult {
@@ -78,4 +84,23 @@ export interface TravisCountyParcel {
   BATHROOMS?: number;
   PROP_TYPE: string;
   geometry: GeoJSON.Polygon;
+}
+
+export interface BuildingFootprint {
+  id: string;
+  geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
+  height: number; // in meters, -1 if unknown
+  confidence: number; // 0-1 confidence score, -1 if unknown
+  area: number; // calculated area
+  coordinates: {
+    lat: number;
+    lng: number;
+  };
+  properties: {
+    building: string;
+    amenity?: string | null;
+    shop?: string | null;
+    office?: string | null;
+    residential?: string | null;
+  };
 } 

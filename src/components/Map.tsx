@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
-import type { Property } from '../types';
+import type { Property, BuildingFootprint } from '../types';
 import type { ComprehensiveData, AddressPoint, CountyBoundary, TexasBoundary } from '../services/comprehensiveDataLoader';
 import type { MapLayerType } from './LayerToggle';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -8,9 +8,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 interface MapProps {
   properties?: Property[];
   comprehensiveData?: ComprehensiveData;
-  enrichedProperties?: any[]; // Add enriched properties
   onPropertyClick?: (property: Property) => void;
-  onEnrichedPropertyClick?: (property: any) => void; // Add handler for enriched properties
   className?: string;
   layerType?: MapLayerType;
   center?: { lat: number; lng: number };
@@ -20,9 +18,7 @@ interface MapProps {
 export const Map: React.FC<MapProps> = ({
   properties = [],
   comprehensiveData,
-  enrichedProperties = [],
   onPropertyClick,
-  onEnrichedPropertyClick,
   className = '',
   layerType = 'all',
   center,
@@ -32,8 +28,19 @@ export const Map: React.FC<MapProps> = ({
   const map = useRef<mapboxgl.Map | null>(null);
   const popup = useRef<mapboxgl.Popup | null>(null);
 
+  console.log('🗺️ Map component rendering with:', {
+    propertiesCount: properties.length,
+    layerType,
+    hasComprehensiveData: !!comprehensiveData,
+    comprehensiveDataDetails: comprehensiveData ? {
+      parcels: comprehensiveData.parcels.length,
+      addresses: comprehensiveData.addresses.length,
+      counties: comprehensiveData.counties.length,
+      buildings: comprehensiveData.buildings?.length || 0,
+      hasTexasBoundary: !!comprehensiveData.texasBoundary
+    } : null
+  });
 
-  console.log('Map component rendering with', properties.length, 'properties, layer:', layerType);
   console.log('Comprehensive data available:', !!comprehensiveData);
 
   useEffect(() => {
@@ -143,8 +150,7 @@ export const Map: React.FC<MapProps> = ({
         'properties', 'properties-polygons', 'parcel-boundaries', 'submitted-properties', 'submitted-properties-symbols',
         'clusters', 'cluster-count', 'unclustered-point', 'heatmap', 'heatmap-points',
         'addresses', 'county-boundaries', 'texas-boundary',
-        'enriched-properties', 'enriched-properties-symbols',
-        'geojson-points'
+        'geojson-points', 'buildings-fill', 'buildings-boundaries'
       ];
       
       layersToRemove.forEach(layerId => {
@@ -155,7 +161,7 @@ export const Map: React.FC<MapProps> = ({
 
       const sourcesToRemove = [
         'properties', 'properties-polygons', 'properties-points', 'clusters', 'addresses', 'county-boundaries', 'texas-boundary',
-        'enriched-properties', 'geojson-points', 'heatmap'
+        'geojson-points', 'heatmap', 'buildings'
       ];
       
       sourcesToRemove.forEach(sourceId => {
@@ -164,66 +170,122 @@ export const Map: React.FC<MapProps> = ({
         }
       });
 
-      // Add background layers for all types
-      if (layerType === 'all' || layerType === 'parcels' || layerType === 'points' || layerType === 'clusters' || layerType === 'heatmap') {
-        // Add Texas boundary first (background)
+      // For "all" layer type, add ALL available layers
+      if (layerType === 'all') {
+        console.log('Adding ALL layers for comprehensive view');
+        
+        // 1. Add Texas boundary first (background)
         if (comprehensiveData?.texasBoundary) {
+          console.log('Adding Texas boundary');
           addTexasBoundary(comprehensiveData.texasBoundary);
         }
 
-        // Add county boundaries
+        // 2. Add county boundaries
         if (comprehensiveData?.counties) {
+          console.log('Adding county boundaries');
           addCountyBoundaries(comprehensiveData.counties);
         }
 
-        // Add Travis County parcels
+        // 3. Add Travis County parcels
         if (comprehensiveData?.parcels) {
+          console.log('Adding parcel boundaries');
           addTravisCountyParcels();
         }
 
-        // Add addresses
+        // 4. Add addresses
         if (comprehensiveData?.addresses) {
+          console.log('Adding address points');
           addAddresses(comprehensiveData.addresses);
+        }
+
+        // 5. Add building footprints
+        if (comprehensiveData?.buildings && comprehensiveData.buildings.length > 0) {
+          console.log('Adding building footprints');
+          addBuildingFootprints(comprehensiveData.buildings);
+        }
+
+        // 6. Add submitted properties as GeoJSON points
+        if (properties.length > 0) {
+          console.log('Adding submitted properties');
+          addPropertyLayers();
+        }
+
+        // 7. Add demo GeoJSON points if no submitted properties
+        if (properties.length === 0) {
+          console.log('Adding demo GeoJSON points for all layers view');
+          addGeoJSONPointsLayer();
+        }
+      } else {
+        // For specific layer types, add background layers first
+        if (layerType === 'parcels' || layerType === 'points' || layerType === 'clusters' || layerType === 'heatmap') {
+          // Add Texas boundary first (background)
+          if (comprehensiveData?.texasBoundary) {
+            addTexasBoundary(comprehensiveData.texasBoundary);
+          }
+
+          // Add county boundaries
+          if (comprehensiveData?.counties) {
+            addCountyBoundaries(comprehensiveData.counties);
+          }
+
+          // Add Travis County parcels
+          if (comprehensiveData?.parcels) {
+            addTravisCountyParcels();
+          }
+
+          // Add addresses
+          if (comprehensiveData?.addresses) {
+            addAddresses(comprehensiveData.addresses);
+          }
+        }
+
+        // Add property layers based on layerType
+        switch (layerType) {
+          case 'parcels':
+            if (properties.length > 0) {
+              addPropertyLayers();
+            }
+            break;
+          case 'points':
+            addGeoJSONPointsLayer();
+            break;
+          case 'clusters':
+            addClusteredMarkersLayer();
+            break;
+          case 'heatmap':
+            addHeatmapLayer();
+            break;
+          case 'buildings':
+            // Add background layers for buildings too
+            if (comprehensiveData?.texasBoundary) {
+              addTexasBoundary(comprehensiveData.texasBoundary);
+            }
+            if (comprehensiveData?.counties) {
+              addCountyBoundaries(comprehensiveData.counties);
+            }
+            if (comprehensiveData?.parcels) {
+              addTravisCountyParcels();
+            }
+            if (comprehensiveData?.addresses) {
+              addAddresses(comprehensiveData.addresses);
+            }
+            // Add building footprints
+            if (comprehensiveData?.buildings && comprehensiveData.buildings.length > 0) {
+              addBuildingFootprints(comprehensiveData.buildings);
+            }
+            break;
         }
       }
 
-      // Add property layers based on layerType
-      switch (layerType) {
-        case 'all':
-          if (properties.length > 0) {
-            addPropertyLayers();
-          }
-          break;
-        case 'parcels':
-          if (properties.length > 0) {
-            addPropertyLayers();
-          }
-          break;
-        case 'points':
-          addGeoJSONPointsLayer();
-          break;
-        case 'clusters':
-          addClusteredMarkersLayer();
-          break;
-        case 'heatmap':
-          addHeatmapLayer();
-          break;
-      }
+      console.log(`✅ Added layers for layerType: ${layerType}`);
 
-      // Add enriched properties as standalone markers (always visible when available)
-      if (enrichedProperties.length > 0) {
-        console.log('About to add enriched properties, count:', enrichedProperties.length);
-        addEnrichedProperties();
-      } else {
-        console.log('No enriched properties to add');
-      }
-
-
-      // Add building footprints layer
-      if (layerType === 'buildings' || layerType === 'all') {
-        // Building footprints removed for now
-      }
-
+      // Force a repaint to ensure layers are visible immediately
+      setTimeout(() => {
+        if (map.current) {
+          map.current.triggerRepaint();
+          console.log('🔄 Forced map repaint');
+        }
+      }, 100);
     } catch (error) {
       console.error('Error adding layers:', error);
     }
@@ -295,95 +357,79 @@ export const Map: React.FC<MapProps> = ({
   const addTexasBoundary = (texasBoundary: TexasBoundary) => {
     if (!map.current) return;
 
-    map.current.addSource('texas-boundary', {
-      type: 'geojson',
-      data: {
-        type: 'Feature',
-        geometry: texasBoundary.geometry,
-        properties: {}
-      }
-    });
+    console.log('🗺️ Adding Texas boundary...');
 
-    map.current.addLayer({
-      id: 'texas-boundary',
-      type: 'line',
-      source: 'texas-boundary',
-      paint: {
-        'line-color': '#1f2937',
-        'line-width': 2,
-        'line-opacity': 0.8
-      }
-    });
+    try {
+      // Add Texas boundary source
+      map.current.addSource('texas-boundary', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            geometry: texasBoundary.geometry,
+            properties: {}
+          }]
+        }
+      });
 
-    console.log('✅ Texas boundary added');
+      // Add Texas boundary layer
+      map.current.addLayer({
+        id: 'texas-boundary',
+        type: 'line',
+        source: 'texas-boundary',
+        paint: {
+          'line-color': '#1f2937',
+          'line-width': 3,
+          'line-opacity': 0.8
+        }
+      });
+
+      console.log('✅ Texas boundary added successfully');
+    } catch (error) {
+      console.error('❌ Error adding Texas boundary:', error);
+    }
   };
 
   const addCountyBoundaries = (counties: CountyBoundary[]) => {
     if (!map.current) return;
 
-    const geojson: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: counties.map(county => ({
-        type: 'Feature' as const,
-        geometry: county.geometry,
-        properties: {
-          id: county.id,
-          name: county.name,
-          fips: county.fips
+    console.log('🗺️ Adding county boundaries...', counties.length);
+
+    try {
+      // Add county boundaries source
+      map.current.addSource('county-boundaries', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: counties.map(county => ({
+            type: 'Feature',
+            geometry: county.geometry,
+            properties: {
+              id: county.id,
+              name: county.name,
+              fips: county.fips
+            }
+          }))
         }
-      }))
-    };
+      });
 
-    map.current.addSource('county-boundaries', {
-      type: 'geojson',
-      data: geojson
-    });
+      // Add county boundaries layer
+      map.current.addLayer({
+        id: 'county-boundaries',
+        type: 'line',
+        source: 'county-boundaries',
+        paint: {
+          'line-color': '#374151',
+          'line-width': 2,
+          'line-opacity': 0.6
+        }
+      });
 
-    map.current.addLayer({
-      id: 'county-boundaries',
-      type: 'line',
-      source: 'county-boundaries',
-      paint: {
-        'line-color': '#6b7280',
-        'line-width': 1,
-        'line-opacity': 0.6
-      }
-    });
-
-    // Add hover effects for county boundaries
-    map.current.on('mouseenter', 'county-boundaries', (e) => {
-      if (map.current) {
-        map.current.getCanvas().style.cursor = 'pointer';
-      }
-      
-      if (e.features && e.features[0] && popup.current) {
-        const feature = e.features[0];
-        const coordinates = (feature.geometry as any).coordinates[0][0].slice();
-        
-        const description = `
-          <div class="p-2">
-            <h3 class="font-semibold text-gray-900">${feature.properties?.name || 'Unknown County'}</h3>
-            <p class="text-sm text-gray-600">FIPS: ${feature.properties?.fips || 'N/A'}</p>
-          </div>
-        `;
-        
-        popup.current
-          .setLngLat(coordinates)
-          .setHTML(description)
-          .addTo(map.current!);
-      }
-    });
-
-    map.current.on('mouseleave', 'county-boundaries', () => {
-      if (map.current) {
-        map.current.getCanvas().style.cursor = '';
-      }
-      if (popup.current) {
-        popup.current.remove();
-      }
-    });
-
-    console.log('✅ County boundaries added');
+      console.log('✅ County boundaries added successfully');
+    } catch (error) {
+      console.error('❌ Error adding county boundaries:', error);
+    }
   };
 
   const addAddresses = (addresses: AddressPoint[]) => {
@@ -665,38 +711,10 @@ export const Map: React.FC<MapProps> = ({
       });
     }
 
-    // Add enriched properties as points
-    if (enrichedProperties.length > 0) {
-      enrichedProperties.forEach(property => {
-        allPoints.push({
-          type: 'Feature' as const,
-          geometry: {
-            type: 'Point' as const,
-            coordinates: [property.coordinates.lng, property.coordinates.lat]
-          },
-          properties: {
-            id: property.propertyId,
-            address: property.address,
-            propertyType: property.propertyType,
-            marketValue: property.marketValue,
-            appraisedValue: property.appraisedValue,
-            squareFootage: property.squareFootage,
-            bedrooms: property.bedrooms,
-            bathrooms: property.bathrooms,
-            yearBuilt: property.yearBuilt,
-            lotSize: property.lotSize,
-            lastSaleDate: property.lastSaleDate,
-            lastSalePrice: property.lastSalePrice,
-            ownerName: property.ownerName,
-            source: 'enriched'
-          }
-        });
-      });
-    }
-
     // Add address points if no other data
     if (allPoints.length === 0 && comprehensiveData?.addresses) {
-      comprehensiveData.addresses.forEach(addr => {
+      console.log('No submitted properties, using address points for demo');
+      comprehensiveData.addresses.slice(0, 50).forEach(addr => { // Limit to 50 for performance
         allPoints.push({
           type: 'Feature' as const,
           geometry: {
@@ -715,10 +733,36 @@ export const Map: React.FC<MapProps> = ({
       });
     }
 
+    // Add demo points if still no data
     if (allPoints.length === 0) {
-      console.log('No points available for GeoJSON layer');
-      return;
+      console.log('No data available, adding demo points');
+      const demoPoints = [
+        { lat: 30.2672, lng: -97.7431, address: 'Downtown Austin', type: 'residential' },
+        { lat: 30.2700, lng: -97.7400, address: 'East Austin', type: 'commercial' },
+        { lat: 30.2650, lng: -97.7450, address: 'South Austin', type: 'industrial' },
+        { lat: 30.2720, lng: -97.7380, address: 'North Austin', type: 'residential' },
+        { lat: 30.2600, lng: -97.7500, address: 'West Austin', type: 'commercial' }
+      ];
+      
+      demoPoints.forEach((point, index) => {
+        allPoints.push({
+          type: 'Feature' as const,
+          geometry: {
+            type: 'Point' as const,
+            coordinates: [point.lng, point.lat]
+          },
+          properties: {
+            id: `demo-${index}`,
+            address: point.address,
+            propertyType: point.type,
+            marketValue: Math.floor(Math.random() * 500000) + 200000,
+            source: 'demo'
+          }
+        });
+      });
     }
+
+    console.log(`Creating GeoJSON layer with ${allPoints.length} points`);
 
     const geojson: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
@@ -744,6 +788,7 @@ export const Map: React.FC<MapProps> = ({
           'submitted', '#ef4444',
           'enriched', '#3b82f6',
           'address', '#10b981',
+          'demo', '#8b5cf6',
           '#6b7280'
         ],
         'circle-stroke-color': '#ffffff',
@@ -793,38 +838,10 @@ export const Map: React.FC<MapProps> = ({
       });
     }
 
-    // Add enriched properties as points
-    if (enrichedProperties.length > 0) {
-      enrichedProperties.forEach(property => {
-        allPoints.push({
-          type: 'Feature' as const,
-          geometry: {
-            type: 'Point' as const,
-            coordinates: [property.coordinates.lng, property.coordinates.lat]
-          },
-          properties: {
-            id: property.propertyId,
-            address: property.address,
-            propertyType: property.propertyType,
-            marketValue: property.marketValue,
-            appraisedValue: property.appraisedValue,
-            squareFootage: property.squareFootage,
-            bedrooms: property.bedrooms,
-            bathrooms: property.bathrooms,
-            yearBuilt: property.yearBuilt,
-            lotSize: property.lotSize,
-            lastSaleDate: property.lastSaleDate,
-            lastSalePrice: property.lastSalePrice,
-            ownerName: property.ownerName,
-            source: 'enriched'
-          }
-        });
-      });
-    }
-
     // Add address points if no other data
     if (allPoints.length === 0 && comprehensiveData?.addresses) {
-      comprehensiveData.addresses.forEach(addr => {
+      console.log('No submitted properties, using address points for clustering demo');
+      comprehensiveData.addresses.slice(0, 100).forEach(addr => { // Limit to 100 for clustering demo
         allPoints.push({
           type: 'Feature' as const,
           geometry: {
@@ -843,10 +860,41 @@ export const Map: React.FC<MapProps> = ({
       });
     }
 
+    // Add demo points if still no data
     if (allPoints.length === 0) {
-      console.log('No points available for clustering');
-      return;
+      console.log('No data available, adding demo points for clustering');
+      const demoPoints = [
+        { lat: 30.2672, lng: -97.7431, address: 'Downtown Austin', type: 'residential' },
+        { lat: 30.2700, lng: -97.7400, address: 'East Austin', type: 'commercial' },
+        { lat: 30.2650, lng: -97.7450, address: 'South Austin', type: 'industrial' },
+        { lat: 30.2720, lng: -97.7380, address: 'North Austin', type: 'residential' },
+        { lat: 30.2600, lng: -97.7500, address: 'West Austin', type: 'commercial' },
+        { lat: 30.2680, lng: -97.7420, address: 'Central Austin', type: 'residential' },
+        { lat: 30.2690, lng: -97.7410, address: 'Midtown Austin', type: 'commercial' },
+        { lat: 30.2660, lng: -97.7440, address: 'South Central', type: 'residential' },
+        { lat: 30.2710, lng: -97.7390, address: 'North Central', type: 'commercial' },
+        { lat: 30.2640, lng: -97.7460, address: 'Southwest Austin', type: 'industrial' }
+      ];
+      
+      demoPoints.forEach((point, index) => {
+        allPoints.push({
+          type: 'Feature' as const,
+          geometry: {
+            type: 'Point' as const,
+            coordinates: [point.lng, point.lat]
+          },
+          properties: {
+            id: `demo-cluster-${index}`,
+            address: point.address,
+            propertyType: point.type,
+            marketValue: Math.floor(Math.random() * 500000) + 200000,
+            source: 'demo'
+          }
+        });
+      });
     }
+
+    console.log(`Creating clustered layer with ${allPoints.length} points`);
 
     const geojson: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
@@ -903,7 +951,7 @@ export const Map: React.FC<MapProps> = ({
       }
     });
 
-    // Add unclustered point markers
+    // Add unclustered point circles
     map.current.addLayer({
       id: 'unclustered-point',
       type: 'circle',
@@ -916,66 +964,43 @@ export const Map: React.FC<MapProps> = ({
           'submitted', '#ef4444',
           'enriched', '#3b82f6',
           'address', '#10b981',
+          'demo', '#8b5cf6',
           '#6b7280'
         ],
         'circle-radius': 8,
         'circle-stroke-width': 2,
-        'circle-stroke-color': '#ffffff'
+        'circle-stroke-color': '#fff'
       }
     });
 
-    // Add click handlers for clusters
+    // Add hover effects and click handlers
+    addHoverEffects('unclustered-point');
+    addClickHandlers('unclustered-point');
+
+    // Handle cluster clicks
     map.current.on('click', 'clusters', (e) => {
       const features = map.current!.queryRenderedFeatures(e.point, {
         layers: ['clusters']
       });
       const clusterId = features[0].properties!.cluster_id;
-      const source = map.current!.getSource('clusters') as any;
-      source.getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
-        if (err) return;
+      (map.current!.getSource('clusters') as any).getClusterExpansionZoom(
+        clusterId,
+        (err: any, zoom: number) => {
+          if (err) return;
 
-        map.current!.easeTo({
-          center: (features[0].geometry as any).coordinates,
-          zoom: zoom
-        });
-      });
-    });
-
-    // Add click handlers for unclustered points
-    map.current.on('click', 'unclustered-point', (e) => {
-      if (e.features && e.features[0]) {
-        const feature = e.features[0];
-        
-        // Check if it's an enriched property
-        if (feature.properties?.source === 'enriched' && onEnrichedPropertyClick) {
-          const enrichedProperty = enrichedProperties.find(p => p.propertyId === feature.properties?.id);
-          if (enrichedProperty) {
-            onEnrichedPropertyClick(enrichedProperty);
-          }
-        } else if (onPropertyClick) {
-          // Handle regular properties
-          const property = properties.find(p => p.id === feature.properties?.id);
-          if (property) {
-            onPropertyClick(property);
-          }
+          map.current!.easeTo({
+            center: (features[0].geometry as any).coordinates,
+            zoom: zoom
+          });
         }
-      }
+      );
     });
 
-    // Add hover effects
+    // Change cursor on cluster hover
     map.current.on('mouseenter', 'clusters', () => {
       map.current!.getCanvas().style.cursor = 'pointer';
     });
-
     map.current.on('mouseleave', 'clusters', () => {
-      map.current!.getCanvas().style.cursor = '';
-    });
-
-    map.current.on('mouseenter', 'unclustered-point', () => {
-      map.current!.getCanvas().style.cursor = 'pointer';
-    });
-
-    map.current.on('mouseleave', 'unclustered-point', () => {
       map.current!.getCanvas().style.cursor = '';
     });
 
@@ -1009,49 +1034,17 @@ export const Map: React.FC<MapProps> = ({
               city: property.city,
               state: property.state,
               zipCode: property.zipCode,
-              source: 'submitted',
-              // Heatmap intensity based on market value
-              heat: Math.min(property.marketValue / 1000000, 1) // Normalize to 0-1
+              source: 'submitted'
             }
           });
         }
       });
     }
 
-    // Add enriched properties as points
-    if (enrichedProperties.length > 0) {
-      enrichedProperties.forEach(property => {
-        allPoints.push({
-          type: 'Feature' as const,
-          geometry: {
-            type: 'Point' as const,
-            coordinates: [property.coordinates.lng, property.coordinates.lat]
-          },
-          properties: {
-            id: property.propertyId,
-            address: property.address,
-            propertyType: property.propertyType,
-            marketValue: property.marketValue,
-            appraisedValue: property.appraisedValue,
-            squareFootage: property.squareFootage,
-            bedrooms: property.bedrooms,
-            bathrooms: property.bathrooms,
-            yearBuilt: property.yearBuilt,
-            lotSize: property.lotSize,
-            lastSaleDate: property.lastSaleDate,
-            lastSalePrice: property.lastSalePrice,
-            ownerName: property.ownerName,
-            source: 'enriched',
-            // Heatmap intensity based on market value
-            heat: Math.min(property.marketValue / 1000000, 1) // Normalize to 0-1
-          }
-        });
-      });
-    }
-
     // Add address points if no other data
     if (allPoints.length === 0 && comprehensiveData?.addresses) {
-      comprehensiveData.addresses.forEach(addr => {
+      console.log('No submitted properties, using address points for heatmap demo');
+      comprehensiveData.addresses.slice(0, 200).forEach(addr => { // Limit to 200 for heatmap demo
         allPoints.push({
           type: 'Feature' as const,
           geometry: {
@@ -1064,17 +1057,52 @@ export const Map: React.FC<MapProps> = ({
             city: addr.city,
             state: addr.state,
             zip: addr.zip,
-            source: 'address',
-            heat: 0.5 // Default heat intensity for addresses
+            source: 'address'
           }
         });
       });
     }
 
+    // Add demo points if still no data
     if (allPoints.length === 0) {
-      console.log('No points available for heatmap');
-      return;
+      console.log('No data available, adding demo points for heatmap');
+      const demoPoints = [
+        { lat: 30.2672, lng: -97.7431, address: 'Downtown Austin', type: 'residential' },
+        { lat: 30.2700, lng: -97.7400, address: 'East Austin', type: 'commercial' },
+        { lat: 30.2650, lng: -97.7450, address: 'South Austin', type: 'industrial' },
+        { lat: 30.2720, lng: -97.7380, address: 'North Austin', type: 'residential' },
+        { lat: 30.2600, lng: -97.7500, address: 'West Austin', type: 'commercial' },
+        { lat: 30.2680, lng: -97.7420, address: 'Central Austin', type: 'residential' },
+        { lat: 30.2690, lng: -97.7410, address: 'Midtown Austin', type: 'commercial' },
+        { lat: 30.2660, lng: -97.7440, address: 'South Central', type: 'residential' },
+        { lat: 30.2710, lng: -97.7390, address: 'North Central', type: 'commercial' },
+        { lat: 30.2640, lng: -97.7460, address: 'Southwest Austin', type: 'industrial' },
+        { lat: 30.2675, lng: -97.7425, address: 'Downtown East', type: 'residential' },
+        { lat: 30.2695, lng: -97.7405, address: 'East Central', type: 'commercial' },
+        { lat: 30.2655, lng: -97.7445, address: 'South Central East', type: 'residential' },
+        { lat: 30.2715, lng: -97.7385, address: 'North Central East', type: 'commercial' },
+        { lat: 30.2645, lng: -97.7465, address: 'Southwest Central', type: 'industrial' }
+      ];
+      
+      demoPoints.forEach((point, index) => {
+        allPoints.push({
+          type: 'Feature' as const,
+          geometry: {
+            type: 'Point' as const,
+            coordinates: [point.lng, point.lat]
+          },
+          properties: {
+            id: `demo-heatmap-${index}`,
+            address: point.address,
+            propertyType: point.type,
+            marketValue: Math.floor(Math.random() * 500000) + 200000,
+            source: 'demo'
+          }
+        });
+      });
     }
+
+    console.log(`Creating heatmap layer with ${allPoints.length} points`);
 
     const geojson: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
@@ -1096,9 +1124,9 @@ export const Map: React.FC<MapProps> = ({
         'heatmap-weight': [
           'interpolate',
           ['linear'],
-          ['get', 'heat'],
+          ['get', 'marketValue'],
           0, 0,
-          1, 1
+          1000000, 1
         ],
         'heatmap-intensity': [
           'interpolate',
@@ -1111,12 +1139,12 @@ export const Map: React.FC<MapProps> = ({
           'interpolate',
           ['linear'],
           ['heatmap-density'],
-          0, 'rgba(33,102,172,0)',
-          0.2, 'rgb(103,169,207)',
-          0.4, 'rgb(209,229,240)',
-          0.6, 'rgb(253,219,199)',
-          0.8, 'rgb(239,138,98)',
-          1, 'rgb(178,24,43)'
+          0, 'rgba(0, 0, 255, 0)',
+          0.2, 'rgb(0, 0, 255)',
+          0.4, 'rgb(0, 255, 0)',
+          0.6, 'rgb(255, 255, 0)',
+          0.8, 'rgb(255, 0, 0)',
+          1, 'rgb(255, 0, 255)'
         ],
         'heatmap-radius': [
           'interpolate',
@@ -1135,172 +1163,97 @@ export const Map: React.FC<MapProps> = ({
       }
     });
 
-    // Add point markers on top of heatmap for interaction
+    // Add heatmap points layer for interaction
     map.current.addLayer({
       id: 'heatmap-points',
       type: 'circle',
       source: 'heatmap',
       paint: {
-        'circle-radius': 6,
-        'circle-color': [
-          'match',
-          ['get', 'source'],
-          'submitted', '#ef4444',
-          'enriched', '#3b82f6',
-          'address', '#10b981',
-          '#6b7280'
-        ],
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': 1,
-        'circle-opacity': 0.7
+        'circle-radius': 0,
+        'circle-opacity': 0
       }
     });
 
-    // Add click handlers for heatmap points
-    map.current.on('click', 'heatmap-points', (e) => {
-      if (e.features && e.features[0]) {
-        const feature = e.features[0];
-        
-        // Check if it's an enriched property
-        if (feature.properties?.source === 'enriched' && onEnrichedPropertyClick) {
-          const enrichedProperty = enrichedProperties.find(p => p.propertyId === feature.properties?.id);
-          if (enrichedProperty) {
-            onEnrichedPropertyClick(enrichedProperty);
-          }
-        } else if (onPropertyClick) {
-          // Handle regular properties
-          const property = properties.find(p => p.id === feature.properties?.id);
-          if (property) {
-            onPropertyClick(property);
-          }
-        }
-      }
-    });
-
-    // Add hover effects
-    map.current.on('mouseenter', 'heatmap-points', () => {
-      map.current!.getCanvas().style.cursor = 'pointer';
-    });
-
-    map.current.on('mouseleave', 'heatmap-points', () => {
-      map.current!.getCanvas().style.cursor = '';
-    });
+    // Add hover effects and click handlers
+    addHoverEffects('heatmap-points');
+    addClickHandlers('heatmap-points');
 
     console.log(`✅ Heatmap layer added with ${allPoints.length} points`);
   };
 
-  const addEnrichedProperties = () => {
-    if (!map.current || enrichedProperties.length === 0) {
-      console.log('Cannot add enriched properties:', { 
-        mapExists: !!map.current, 
-        enrichedCount: enrichedProperties.length 
-      });
-      return;
-    }
+  const addBuildingFootprints = (buildings: BuildingFootprint[]) => {
+    if (!map.current) return;
 
-    console.log('Adding enriched properties as markers:', enrichedProperties.length);
-    console.log('Sample enriched property:', enrichedProperties[0]);
+    console.log('Adding building footprints:', buildings.length);
 
-    // Create GeoJSON for enriched properties
-    const enrichedGeojson: GeoJSON.FeatureCollection = {
+    // Create GeoJSON for building footprints
+    const buildingGeojson: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
-      features: enrichedProperties.map(property => ({
+      features: buildings.map(building => ({
         type: 'Feature' as const,
-        geometry: {
-          type: 'Point' as const,
-          coordinates: [property.coordinates.lng, property.coordinates.lat]
-        },
+        geometry: building.geometry,
         properties: {
-          id: property.propertyId,
-          address: property.address,
-          marketValue: property.marketValue,
-          appraisedValue: property.appraisedValue,
-          propertyType: property.propertyType,
-          squareFootage: property.squareFootage,
-          bedrooms: property.bedrooms,
-          bathrooms: property.bathrooms,
-          yearBuilt: property.yearBuilt,
-          lotSize: property.lotSize,
-          lastSaleDate: property.lastSaleDate,
-          lastSalePrice: property.lastSalePrice,
-          ownerName: property.ownerName,
-          isEnriched: true
+          id: building.id,
+          height: building.height,
+          confidence: building.confidence,
+          area: building.area,
+          building: building.properties.building,
+          amenity: building.properties.amenity,
+          shop: building.properties.shop,
+          office: building.properties.office,
+          residential: building.properties.residential,
+          isBuilding: true
         }
       }))
     };
 
-    console.log('Enriched GeoJSON created:', enrichedGeojson.features.length, 'features');
-    console.log('Sample feature:', enrichedGeojson.features[0]);
+    // Add building source
+    map.current.addSource('buildings', {
+      type: 'geojson',
+      data: buildingGeojson
+    });
 
-    try {
-      // Add enriched properties source
-      map.current.addSource('enriched-properties', {
-        type: 'geojson',
-        data: enrichedGeojson
-      });
+    // Add building fill layer
+    map.current.addLayer({
+      id: 'buildings-fill',
+      type: 'fill',
+      source: 'buildings',
+      paint: {
+        'fill-color': [
+          'case',
+          ['==', ['get', 'residential'], 'yes'], '#3b82f6',
+          ['==', ['get', 'shop'], 'yes'], '#10b981',
+          ['==', ['get', 'office'], 'yes'], '#f59e0b',
+          ['==', ['get', 'amenity'], 'yes'], '#8b5cf6',
+          '#6b7280'
+        ],
+        'fill-opacity': 0.7,
+        'fill-outline-color': '#1f2937'
+      }
+    });
 
-      console.log('✅ Enriched properties source added');
+    // Add building boundaries
+    map.current.addLayer({
+      id: 'buildings-boundaries',
+      type: 'line',
+      source: 'buildings',
+      paint: {
+        'line-color': '#1f2937',
+        'line-width': 1,
+        'line-opacity': 0.8
+      }
+    });
 
-      // Add enriched properties as circle markers
-      map.current.addLayer({
-        id: 'enriched-properties',
-        type: 'circle',
-        source: 'enriched-properties',
-        paint: {
-          'circle-radius': 12,
-          'circle-color': [
-            'match',
-            ['get', 'propertyType'],
-            'residential', '#3b82f6',
-            'commercial', '#10b981',
-            'industrial', '#f59e0b',
-            'agricultural', '#8b5cf6',
-            'vacant', '#6b7280',
-            '#3b82f6'
-          ],
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 3,
-          'circle-opacity': 0.9
-        }
-      });
+    // Add hover effects and click handlers
+    addHoverEffects('buildings-fill');
+    addHoverEffects('buildings-boundaries');
+    addClickHandlers('buildings-fill');
+    addClickHandlers('buildings-boundaries');
 
-      console.log('✅ Enriched properties circle layer added');
-
-      // Add enriched properties symbols for better visibility
-      map.current.addLayer({
-        id: 'enriched-properties-symbols',
-        type: 'symbol',
-        source: 'enriched-properties',
-        layout: {
-          'text-field': ['get', 'address'],
-          'text-font': ['Open Sans Regular'],
-          'text-size': 11,
-          'text-offset': [0, 1.8],
-          'text-anchor': 'top',
-          'icon-image': 'marker-15',
-          'icon-size': 1.5,
-          'icon-allow-overlap': true
-        },
-        paint: {
-          'text-color': '#1f2937',
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1
-        }
-      });
-
-      console.log('✅ Enriched properties symbol layer added');
-
-      // Add hover effects for enriched properties
-      addHoverEffects('enriched-properties');
-      addHoverEffects('enriched-properties-symbols');
-      addClickHandlers('enriched-properties');
-      addClickHandlers('enriched-properties-symbols');
-
-      console.log('✅ Enriched properties event handlers added');
-    } catch (error) {
-      console.error('Error adding enriched properties:', error);
-    }
+    console.log('✅ Building footprints added successfully');
   };
+
+  // Removed addEnrichedProperties function
 
   const addHoverEffects = (layerId: string) => {
     // Note: Mapbox doesn't support removing specific event listeners easily
@@ -1324,23 +1277,8 @@ export const Map: React.FC<MapProps> = ({
         // Enhanced popup content
         let description = '';
         
-        if (feature.properties?.isEnriched || feature.properties?.source === 'enriched') {
-          // Enriched property popup
-          description = `
-            <div class="p-3 max-w-xs">
-              <h3 class="font-semibold text-gray-900 text-sm mb-2">${feature.properties?.address || 'Unknown Address'}</h3>
-              <div class="space-y-1 text-xs">
-                <p class="text-green-600 font-medium">$${(feature.properties?.marketValue || 0).toLocaleString()} market value</p>
-                <p class="text-gray-600">Type: ${feature.properties?.propertyType || 'Unknown'}</p>
-                ${feature.properties?.squareFootage ? `<p class="text-gray-600">${feature.properties.squareFootage.toLocaleString()} sq ft</p>` : ''}
-                ${feature.properties?.bedrooms ? `<p class="text-gray-600">${feature.properties.bedrooms} beds, ${feature.properties.bathrooms || 0} baths</p>` : ''}
-                ${feature.properties?.yearBuilt ? `<p class="text-gray-600">Built ${feature.properties.yearBuilt}</p>` : ''}
-                ${feature.properties?.ownerName ? `<p class="text-gray-600">Owner: ${feature.properties.ownerName}</p>` : ''}
-                <p class="text-blue-600 text-xs mt-2">Click for details</p>
-              </div>
-            </div>
-          `;
-        } else {
+        // Removed enriched properties functionality
+        if (onPropertyClick) {
           // Regular property popup
           description = `
             <div class="p-3 max-w-xs">
@@ -1382,19 +1320,8 @@ export const Map: React.FC<MapProps> = ({
         const feature = e.features[0];
         
         // Check if it's an enriched property
-        if (feature.properties?.isEnriched && onEnrichedPropertyClick) {
-          // Find the enriched property and call the handler
-          const enrichedProperty = enrichedProperties.find(p => p.propertyId === feature.properties?.id);
-          if (enrichedProperty) {
-            onEnrichedPropertyClick(enrichedProperty);
-          }
-        } else if (feature.properties?.source === 'enriched' && onEnrichedPropertyClick) {
-          // Handle enriched properties from new layer types
-          const enrichedProperty = enrichedProperties.find(p => p.propertyId === feature.properties?.id);
-          if (enrichedProperty) {
-            onEnrichedPropertyClick(enrichedProperty);
-          }
-        } else if (onPropertyClick) {
+        // Removed enriched properties functionality
+        if (onPropertyClick) {
           // Handle regular properties
           const propertyId = feature.properties?.id;
           const property = properties.find(p => p.id === propertyId);
@@ -1408,10 +1335,24 @@ export const Map: React.FC<MapProps> = ({
 
   // Update layers when properties, comprehensiveData, or layerType changes
   useEffect(() => {
+    console.log('🔄 Map useEffect triggered:', {
+      hasMap: !!map.current,
+      isStyleLoaded: map.current?.isStyleLoaded(),
+      layerType,
+      propertiesCount: properties.length,
+      hasComprehensiveData: !!comprehensiveData
+    });
+    
     if (map.current && map.current.isStyleLoaded()) {
+      console.log('🎯 Map ready, re-adding layers...');
+      console.log('Current layer type:', layerType);
+      
+      // Force a complete layer refresh
       addAllLayers();
+    } else {
+      console.log('⏳ Map not ready yet, waiting...');
     }
-  }, [properties, comprehensiveData, layerType, enrichedProperties]);
+  }, [properties, comprehensiveData, layerType]);
 
   // Handle center and zoom changes
   useEffect(() => {

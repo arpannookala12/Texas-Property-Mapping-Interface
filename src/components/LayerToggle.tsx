@@ -1,19 +1,24 @@
 import { useState } from 'react';
 import { Layers } from 'lucide-react';
 
-export type MapLayerType = 'parcels' | 'points' | 'clusters' | 'heatmap';
+export type MapLayerType = 'all' | 'parcels' | 'points' | 'clusters' | 'heatmap' | 'buildings';
 
 interface LayerToggleProps {
   currentLayer: MapLayerType;
   onLayerChange: (layer: MapLayerType) => void;
 }
 
-export const LayerToggle: React.FC<LayerToggleProps> = ({ currentLayer, onLayerChange }) => {
+export const LayerToggle: React.FC<LayerToggleProps> = ({
+  currentLayer,
+  onLayerChange
+}) => {
   const layerOptions = [
-    { value: 'parcels', label: 'Parcel Boundaries', description: 'Travis County parcel boundaries' },
-    { value: 'points', label: 'Address Points', description: 'Individual address points' },
-    { value: 'clusters', label: 'Clustered Markers', description: 'Grouped property markers' },
-    { value: 'heatmap', label: 'Heatmap Layer', description: 'Property density heatmap' }
+    { value: 'all', label: 'All Layers' },
+    { value: 'parcels', label: 'Parcels' },
+    { value: 'points', label: 'GeoJSON Points' },
+    { value: 'clusters', label: 'Clustered Markers' },
+    { value: 'heatmap', label: 'Heatmap' },
+    { value: 'buildings', label: 'Building Footprints' }
   ];
 
   return (
@@ -35,7 +40,7 @@ export const LayerToggle: React.FC<LayerToggleProps> = ({ currentLayer, onLayerC
         ))}
       </select>
       <p className="text-xs text-gray-500">
-        {layerOptions.find(opt => opt.value === currentLayer)?.description}
+        Select a layer to display different data types on the map
       </p>
     </div>
   );

@@ -1,7 +1,9 @@
 import * as shapefile from 'shapefile';
-import type { TravisCountyParcel } from '../types';
+import type { TravisCountyParcel, BuildingFootprint } from '../types';
+import { loadTravisCountyBuildings } from './buildingFootprintLoader';
 import { transformGeometryToWGS84, isWebMercator } from '../utils/coordinateTransform';
 
+// Define interfaces locally since they're not exported from shapefileLoader
 export interface AddressPoint {
   id: string;
   address: string;
@@ -28,6 +30,7 @@ export interface ComprehensiveData {
   addresses: AddressPoint[];
   counties: CountyBoundary[];
   texasBoundary: TexasBoundary;
+  buildings: BuildingFootprint[];
 }
 
 export const loadComprehensiveData = async (): Promise<ComprehensiveData> => {
@@ -35,23 +38,26 @@ export const loadComprehensiveData = async (): Promise<ComprehensiveData> => {
   
   try {
     // Load all data in parallel for better performance
-    const [parcels, addresses, counties, texasBoundary] = await Promise.all([
+    const [parcels, addresses, counties, texasBoundary, buildingData] = await Promise.all([
       loadTravisCountyParcels(),
       loadTravisCountyAddresses(),
       loadCountyBoundaries(),
-      loadTexasBoundary()
+      loadTexasBoundary(),
+      loadTravisCountyBuildings()
     ]);
 
-    console.log('✅ All data loaded successfully');
+    console.log('✅ All comprehensive data loaded successfully:');
     console.log(`  - ${parcels.length} parcels`);
     console.log(`  - ${addresses.length} addresses`);
     console.log(`  - ${counties.length} counties`);
+    console.log(`  - ${buildingData.loadedCount} buildings`);
 
     return {
       parcels,
       addresses,
       counties,
-      texasBoundary
+      texasBoundary,
+      buildings: buildingData.buildings
     };
   } catch (error) {
     console.error('Error loading comprehensive data:', error);

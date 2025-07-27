@@ -78,25 +78,25 @@ export const PropertySearchFilters: React.FC<SearchFiltersComponentProps> = ({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Min Value
+              Min Price
             </label>
             <input
               type="number"
               placeholder="0"
-              value={filters.minValue || ''}
-              onChange={(e) => handleInputChange('minValue', e.target.value ? Number(e.target.value) : undefined)}
+              value={filters.minPrice || ''}
+              onChange={(e) => handleInputChange('minPrice', e.target.value ? Number(e.target.value) : undefined)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Max Value
+              Max Price
             </label>
             <input
               type="number"
               placeholder="Any"
-              value={filters.maxValue || ''}
-              onChange={(e) => handleInputChange('maxValue', e.target.value ? Number(e.target.value) : undefined)}
+              value={filters.maxPrice || ''}
+              onChange={(e) => handleInputChange('maxPrice', e.target.value ? Number(e.target.value) : undefined)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
           </div>
