@@ -1,15 +1,42 @@
 # Texas Property Mapping Interface
 
-An interactive GIS application for exploring Travis County real estate data with advanced mapping capabilities, property submission, and filtering features.
+A comprehensive React-based GIS application for exploring and managing Texas real estate data with interactive mapping capabilities.
 
-## 🏗️ Tech Stack & Architecture
+## 🗺️ Live Demo
 
-### **Frontend Technologies**
-- **React 18** - Modern component-based UI framework
+Visit the application: [Texas Property Mapping Interface](https://github.com/arpannookala12/Texas-Property-Mapping-Interface)
+
+## 🚀 Features
+
+### **Interactive Mapping**
+- **Mapbox GL JS Integration** - High-performance vector mapping
+- **Travis County Data** - Real parcel boundaries, addresses, and building footprints
+- **Layer Management** - Toggle between different data layers
+- **Property Submission** - Add custom properties with geocoding
+- **Advanced Filtering** - Search by price, type, location, and more
+
+### **Data Visualization**
+- **Parcel Boundaries** - Clickable property boundaries with detailed information
+- **Address Points** - Geocoded address data with property details
+- **Building Footprints** - 3D building visualization with type classification
+- **Property Markers** - Interactive markers for user-submitted properties
+- **Clustered Markers** - Performance-optimized marker clustering
+- **Heatmap Layer** - Density visualization of property data
+
+### **User Experience**
+- **Responsive Design** - Works on desktop and mobile devices
+- **Real-time Filtering** - Instant property search and filtering
+- **Property Cards** - Detailed property information display
+- **Map Integration** - Seamless property-to-map navigation
+- **Local Storage** - Persistent user data and preferences
+
+## 🛠️ Tech Stack
+
+### **Frontend Framework**
+- **React 18** - Modern component-based architecture
 - **TypeScript** - Type-safe development with enhanced IDE support
 - **Vite** - Fast build tool and development server
 - **Tailwind CSS** - Utility-first CSS framework for rapid styling
-- **Lucide React** - Modern icon library
 
 ### **Mapping & GIS**
 - **Mapbox GL JS** - High-performance vector mapping library
@@ -18,47 +45,86 @@ An interactive GIS application for exploring Travis County real estate data with
 - **Coordinate Transformation** - Web Mercator to WGS84 conversion utilities
 
 ### **Data Management**
-- **Local Storage** - Client-side property data persistence
-- **Fetch API** - HTTP requests for external data
-- **Mapbox Geocoding API** - Address to coordinate conversion
+- **Local Storage** - Client-side data persistence
+- **JSON Processing** - Efficient data serialization
+- **Fetch API** - Modern HTTP client for data retrieval
+- **Geocoding API** - Mapbox geocoding for address validation
 
-### **Testing Framework**
-- **Vitest** - Fast unit testing framework
-- **@testing-library/react** - React component testing utilities
-- **@testing-library/jest-dom** - Custom matchers for DOM testing
+### **UI/UX Components**
+- **Lucide React** - Beautiful, customizable icons
+- **Custom Hooks** - Reusable React logic
+- **Component Architecture** - Modular, maintainable code structure
+- **Responsive Design** - Mobile-first approach
 
 ### **Development Tools**
-- **ESLint** - Code linting and formatting
-- **PostCSS** - CSS processing pipeline
-- **Autoprefixer** - CSS vendor prefixing
+- **Vitest** - Fast unit testing framework
+- **Testing Library** - React component testing utilities
+- **ESLint** - Code quality and consistency
+- **TypeScript Compiler** - Static type checking
 
-## 🗺️ Layer Toggle System
+## 🏗️ Architecture
 
-### **Architecture Overview**
-The layer toggle system provides dynamic map visualization with real-time layer switching. Each layer type serves a specific purpose and can be toggled independently.
+### **Component Structure**
 
-### **Layer Types**
-```typescript
-type MapLayerType = 'all' | 'parcels' | 'points' | 'clusters' | 'heatmap' | 'buildings';
+```
+src/
+├── components/
+│   ├── Map.tsx              # Main mapping component
+│   ├── PropertyCard.tsx     # Property information display
+│   ├── FloatingPropertyForm.tsx # Property submission form
+│   ├── LayerToggle.tsx      # Layer management controls
+│   └── SearchFilters.tsx    # Property filtering interface
+├── services/
+│   ├── propertyStorage.ts   # Local storage management
+│   ├── comprehensiveDataLoader.ts # GIS data loading
+│   └── buildingFootprintLoader.ts # Building data processing
+├── hooks/
+│   └── useMapbox.ts        # Mapbox GL JS integration
+├── utils/
+│   └── coordinateTransform.ts # Coordinate conversion utilities
+└── types/
+    └── index.ts            # TypeScript type definitions
 ```
 
-1. **All Layers** - Comprehensive view showing all available data
-2. **Parcels** - Travis County land parcel boundaries
-3. **Points** - GeoJSON point data with interactive popups
-4. **Clusters** - Clustered markers for dense data visualization
-5. **Heatmap** - Density-based visualization of property data
-6. **Buildings** - Microsoft Building Footprints integration
+### **Data Flow**
+
+1. **Data Loading** - Comprehensive GIS data loaded on app initialization
+2. **Layer Management** - Dynamic layer switching with proper cleanup
+3. **Property Submission** - Form validation → Geocoding → Local storage
+4. **Filtering** - Real-time property filtering with multiple criteria
+5. **Map Interaction** - Click handlers → Property selection → Zoom navigation
+
+### **State Management**
+
+- **React Hooks** - Local component state management
+- **Custom Hooks** - Reusable state logic (useMapbox)
+- **Local Storage** - Persistent data across sessions
+- **Event System** - Custom events for component communication
+
+## 🎯 Layer Toggle System
+
+### **Layer Types**
+
+The application supports multiple layer types for different data visualization needs:
+
+- **All Layers** - Comprehensive view with all available data
+- **Parcels** - Travis County parcel boundaries with property data
+- **Addresses** - Geocoded address points with property information
+- **Buildings** - Microsoft building footprints with 3D visualization
+- **GeoJSON Points** - User-submitted properties as interactive markers
+- **Clustered Markers** - Performance-optimized marker clustering
+- **Heatmap** - Density visualization of property data
 
 ### **Implementation Details**
 
-#### **Layer Management**
+#### **Layer Management Logic**
+
 ```typescript
 const addAllLayers = () => {
   // Remove existing layers and sources
   const layersToRemove = [
-    'properties', 'parcel-boundaries', 'submitted-properties',
-    'clusters', 'heatmap', 'addresses', 'county-boundaries',
-    'texas-boundary', 'geojson-points', 'buildings-fill'
+    'properties', 'parcel-boundaries', 'addresses', 
+    'buildings-fill', 'buildings-boundaries'
   ];
   
   // Add layers based on layerType
@@ -77,7 +143,9 @@ const addAllLayers = () => {
 ```
 
 #### **Source Existence Checks**
+
 To prevent duplicate source errors during layer switching:
+
 ```typescript
 const addTravisCountyParcels = () => {
   if (map.current.getSource('travis-parcels')) {
@@ -89,38 +157,43 @@ const addTravisCountyParcels = () => {
 ```
 
 #### **Performance Optimizations**
-- **Lazy Loading** - Layers added only when needed
-- **Source Caching** - Prevent duplicate source creation
-- **Layer Cleanup** - Proper removal of unused layers
-- **Repaint Triggering** - Force map updates for immediate visibility
+
+* **Lazy Loading** - Layers added only when needed
+* **Source Caching** - Prevent duplicate source creation
+* **Layer Cleanup** - Proper removal of unused layers
+* **Repaint Triggering** - Force map updates for immediate visibility
 
 ### **Data Sources**
-- **Travis County Parcels** - Land parcel boundaries with property data
-- **Address Points** - Geocoded address data
-- **County Boundaries** - Administrative boundary data
-- **Texas Boundary** - State-level boundary data
-- **Building Footprints** - Microsoft building data (optional)
-- **User-Submitted Properties** - Custom property submissions
+
+* **Travis County Parcels** - Land parcel boundaries with property data
+* **Address Points** - Geocoded address data
+* **County Boundaries** - Administrative boundary data
+* **Texas Boundary** - State-level boundary data
+* **Building Footprints** - Microsoft building data (optional)
+* **User-Submitted Properties** - Custom property submissions
 
 ## 🚀 Production Scaling Strategy
 
 ### **Current Architecture Limitations**
 
 #### **Frontend Constraints**
-- **Client-Side Data Processing** - Large datasets processed in browser
-- **Local Storage Limits** - ~5-10MB storage capacity
-- **Memory Usage** - Large GeoJSON files loaded into memory
-- **Network Dependencies** - Mapbox API rate limits
+
+* **Client-Side Data Processing** - Large datasets processed in browser
+* **Local Storage Limits** - ~5-10MB storage capacity
+* **Memory Usage** - Large GeoJSON files loaded into memory
+* **Network Dependencies** - Mapbox API rate limits
 
 #### **Performance Bottlenecks**
-- **Shapefile Processing** - CPU-intensive parsing
-- **Coordinate Transformations** - Real-time calculations
-- **Layer Switching** - Complex state management
-- **Data Synchronization** - Client-server data consistency
+
+* **Shapefile Processing** - CPU-intensive parsing
+* **Coordinate Transformations** - Real-time calculations
+* **Layer Switching** - Complex state management
+* **Data Synchronization** - Client-server data consistency
 
 ### **Production Scaling Roadmap**
 
 #### **Phase 1: Backend Infrastructure**
+
 ```python
 # FastAPI Backend Architecture
 from fastapi import FastAPI
@@ -149,6 +222,7 @@ class DataProcessingService:
 ```
 
 #### **Phase 2: Database Design**
+
 ```sql
 -- PostgreSQL with PostGIS extension
 CREATE TABLE properties (
@@ -166,6 +240,7 @@ CREATE INDEX idx_properties_market_value ON properties(market_value);
 ```
 
 #### **Phase 3: API Architecture**
+
 ```typescript
 // RESTful API endpoints
 interface PropertyAPI {
@@ -191,6 +266,7 @@ interface PropertyAPI {
 #### **Phase 4: Performance Optimizations**
 
 **Caching Strategy**
+
 ```typescript
 // Redis caching for frequently accessed data
 const cacheLayer = async (layerType: string, data: any) => {
@@ -204,6 +280,7 @@ const getCachedLayer = async (layerType: string) => {
 ```
 
 **CDN Integration**
+
 ```typescript
 // Static asset optimization
 const staticAssets = {
@@ -214,6 +291,7 @@ const staticAssets = {
 ```
 
 **Database Optimization**
+
 ```sql
 -- Partitioning for large datasets
 CREATE TABLE properties_2024 PARTITION OF properties
@@ -232,12 +310,14 @@ GROUP BY property_type;
 ### **Scalability Considerations**
 
 #### **Horizontal Scaling**
-- **Load Balancers** - Distribute traffic across multiple servers
-- **Database Sharding** - Partition data by geographic regions
-- **Microservices** - Separate concerns (mapping, data, users)
-- **Container Orchestration** - Kubernetes for deployment management
+
+* **Load Balancers** - Distribute traffic across multiple servers
+* **Database Sharding** - Partition data by geographic regions
+* **Microservices** - Separate concerns (mapping, data, users)
+* **Container Orchestration** - Kubernetes for deployment management
 
 #### **Performance Monitoring**
+
 ```typescript
 // Application performance monitoring
 const performanceMetrics = {
@@ -249,6 +329,7 @@ const performanceMetrics = {
 ```
 
 #### **Data Pipeline**
+
 ```python
 # ETL pipeline for data processing
 class DataPipeline:
@@ -268,6 +349,7 @@ class DataPipeline:
 ### **Security Considerations**
 
 #### **API Security**
+
 ```typescript
 // JWT authentication
 const authenticateUser = async (token: string) => {
@@ -283,14 +365,16 @@ const rateLimiter = rateLimit({
 ```
 
 #### **Data Protection**
-- **Input Validation** - Sanitize all user inputs
-- **SQL Injection Prevention** - Use parameterized queries
-- **CORS Configuration** - Restrict cross-origin requests
-- **HTTPS Enforcement** - Secure all communications
+
+* **Input Validation** - Sanitize all user inputs
+* **SQL Injection Prevention** - Use parameterized queries
+* **CORS Configuration** - Restrict cross-origin requests
+* **HTTPS Enforcement** - Secure all communications
 
 ### **Deployment Strategy**
 
 #### **Infrastructure as Code**
+
 ```yaml
 # Docker Compose for local development
 version: '3.8'
@@ -318,6 +402,7 @@ services:
 ```
 
 #### **CI/CD Pipeline**
+
 ```yaml
 # GitHub Actions workflow
 name: Deploy to Production
@@ -342,43 +427,57 @@ jobs:
 ## 📊 Performance Metrics
 
 ### **Current Performance**
-- **Initial Load Time**: ~3-5 seconds
-- **Layer Switch Time**: ~1-2 seconds
-- **Memory Usage**: ~50-100MB for large datasets
-- **Network Requests**: 5-10 requests per session
+
+* **Initial Load Time**: ~3-5 seconds
+* **Layer Switch Time**: ~1-2 seconds
+* **Memory Usage**: ~50-100MB for large datasets
+* **Network Requests**: 5-10 requests per session
 
 ### **Target Performance**
-- **Initial Load Time**: <2 seconds
-- **Layer Switch Time**: <500ms
-- **Memory Usage**: <50MB
-- **Network Requests**: <5 requests per session
+
+* **Initial Load Time**: <2 seconds
+* **Layer Switch Time**: <500ms
+* **Memory Usage**: <50MB
+* **Network Requests**: <5 requests per session
 
 ## 🔮 Future Enhancements
 
-### **Short Term (1-3 months)**
-- [ ] Backend API implementation
-- [ ] Database migration
-- [ ] Performance optimization
-- [ ] User authentication
+### **Backend Development**
+* Backend API implementation with FastAPI
+* PostgreSQL database with PostGIS extension
+* Redis caching for performance optimization
+* User authentication and authorization
 
-### **Medium Term (3-6 months)**
-- [ ] Advanced filtering
-- [ ] Real-time updates
-- [ ] Mobile optimization
-- [ ] Analytics dashboard
+### **Advanced Features**
+* Real-time property updates and notifications
+* Advanced spatial queries and analytics
+* Mobile application development
+* AI-powered property recommendations
 
-### **Long Term (6+ months)**
-- [ ] AI-powered recommendations
-- [ ] Predictive analytics
-- [ ] Multi-region support
-- [ ] Advanced GIS features
+### **Data Integration**
+* Integration with additional property databases
+* Real-time market data feeds
+* Historical property value tracking
+* Environmental and zoning data layers
+
+### **User Experience**
+* Advanced filtering and search capabilities
+* Property comparison tools
+* Interactive data visualization dashboards
+* Custom user preferences and saved searches
+
+### **Scalability & Performance**
+* Microservices architecture
+* Horizontal scaling capabilities
+* Advanced caching strategies
+* Performance monitoring and analytics
 
 ## 🛠️ Development Setup
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/texas-property-mapping.git
-cd texas-property-mapping
+git clone https://github.com/arpannookala12/Texas-Property-Mapping-Interface.git
+cd Texas-Property-Mapping-Interface
 
 # Install dependencies
 npm install
@@ -395,4 +494,4 @@ npm run build
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
