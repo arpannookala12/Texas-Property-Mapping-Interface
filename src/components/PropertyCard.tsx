@@ -6,9 +6,12 @@ interface PropertyCardProps {
   property: Property;
   onClose: () => void;
   onDelete?: () => void;
+  onSelect?: () => void;
+  onViewOnMap?: () => void; // New prop for View on Map button
+  isSelected?: boolean;
 }
 
-export const PropertyCard: React.FC<PropertyCardProps> = ({ property, onClose, onDelete }) => {
+export const PropertyCard: React.FC<PropertyCardProps> = ({ property, onClose, onDelete, onSelect, onViewOnMap, isSelected = false }) => {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -52,17 +55,30 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property, onClose, o
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+    <div 
+      className={`bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-200 hover:border-blue-300 ${
+        isSelected ? 'border-blue-500 shadow-blue-100 bg-blue-50' : ''
+      }`}
+      onClick={onSelect}
+    >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
         <h3 className="text-lg font-semibold text-gray-900 flex items-center">
           <Home className="w-5 h-5 mr-2" />
           Property Details
+          {isSelected && (
+            <span className="ml-2 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+              Selected
+            </span>
+          )}
         </h3>
         <div className="flex items-center space-x-2">
           {onDelete && (
             <button
-              onClick={onDelete}
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent card selection when deleting
+                onDelete();
+              }}
               className="text-red-400 hover:text-red-600 transition-colors"
               title="Delete property"
             >
@@ -70,7 +86,10 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property, onClose, o
             </button>
           )}
           <button
-            onClick={onClose}
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent card selection when closing
+              onClose();
+            }}
             className="text-gray-400 hover:text-gray-600 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -112,10 +131,27 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property, onClose, o
         {/* Price */}
         <div className="flex items-center">
           <DollarSign className="w-4 h-4 text-gray-400 mr-2" />
-          <span className="text-sm text-gray-600">
-            Market Value: <span className="font-medium text-gray-900">{formatCurrency(property.marketValue)}</span>
-          </span>
+          <div>
+            <p className="font-semibold text-lg text-gray-900">
+              {formatCurrency(property.marketValue)}
+            </p>
+            <p className="text-sm text-gray-600">Market Value</p>
+          </div>
         </div>
+
+        {/* View on Map Button */}
+        {onViewOnMap && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewOnMap();
+            }}
+            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl transform hover:scale-105"
+          >
+            <MapPin className="w-4 h-4 mr-2" />
+            View on Map
+          </button>
+        )}
 
         {/* Acreage (if available) */}
         {property.acreage && property.acreage > 0 && (

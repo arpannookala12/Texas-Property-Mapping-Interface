@@ -13,6 +13,7 @@ interface MapProps {
   layerType?: MapLayerType;
   center?: { lat: number; lng: number };
   zoom?: number;
+  onMapReady?: (map: mapboxgl.Map) => void; // New prop to expose map instance
 }
 
 export const Map: React.FC<MapProps> = ({
@@ -22,7 +23,8 @@ export const Map: React.FC<MapProps> = ({
   className = '',
   layerType = 'all',
   center,
-  zoom
+  zoom,
+  onMapReady
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -104,6 +106,11 @@ export const Map: React.FC<MapProps> = ({
       map.current.on('load', () => {
         console.log('🎉 Map loaded successfully!');
         addAllLayers();
+        
+        // Notify parent component that map is ready
+        if (onMapReady && map.current) {
+          onMapReady(map.current);
+        }
       });
 
       map.current.on('error', (e) => {
@@ -145,7 +152,7 @@ export const Map: React.FC<MapProps> = ({
     console.log('Adding layers for type:', layerType);
 
     try {
-      // Remove existing layers
+      // Remove existing layers and sources
       const layersToRemove = [
         'properties', 'properties-polygons', 'parcel-boundaries', 'submitted-properties', 'submitted-properties-symbols',
         'clusters', 'cluster-count', 'unclustered-point', 'heatmap', 'heatmap-points',
@@ -153,9 +160,11 @@ export const Map: React.FC<MapProps> = ({
         'geojson-points', 'buildings-fill', 'buildings-boundaries'
       ];
       
+      console.log('🧹 Removing existing layers...');
       layersToRemove.forEach(layerId => {
         if (map.current!.getLayer(layerId)) {
           map.current!.removeLayer(layerId);
+          console.log(`  - Removed layer: ${layerId}`);
         }
       });
 
@@ -164,59 +173,63 @@ export const Map: React.FC<MapProps> = ({
         'geojson-points', 'heatmap', 'buildings'
       ];
       
+      console.log('🧹 Removing existing sources...');
       sourcesToRemove.forEach(sourceId => {
         if (map.current!.getSource(sourceId)) {
           map.current!.removeSource(sourceId);
+          console.log(`  - Removed source: ${sourceId}`);
         }
       });
 
       // For "all" layer type, add ALL available layers
       if (layerType === 'all') {
-        console.log('Adding ALL layers for comprehensive view');
+        console.log('🎯 Adding ALL layers for comprehensive view');
         
         // 1. Add Texas boundary first (background)
         if (comprehensiveData?.texasBoundary) {
-          console.log('Adding Texas boundary');
+          console.log('  📍 Adding Texas boundary');
           addTexasBoundary(comprehensiveData.texasBoundary);
         }
 
         // 2. Add county boundaries
         if (comprehensiveData?.counties) {
-          console.log('Adding county boundaries');
+          console.log('  📍 Adding county boundaries');
           addCountyBoundaries(comprehensiveData.counties);
         }
 
         // 3. Add Travis County parcels
         if (comprehensiveData?.parcels) {
-          console.log('Adding parcel boundaries');
+          console.log('  📍 Adding parcel boundaries');
           addTravisCountyParcels();
         }
 
         // 4. Add addresses
         if (comprehensiveData?.addresses) {
-          console.log('Adding address points');
+          console.log('  📍 Adding address points');
           addAddresses(comprehensiveData.addresses);
         }
 
         // 5. Add building footprints
         if (comprehensiveData?.buildings && comprehensiveData.buildings.length > 0) {
-          console.log('Adding building footprints');
+          console.log('  📍 Adding building footprints');
           addBuildingFootprints(comprehensiveData.buildings);
         }
 
         // 6. Add submitted properties as GeoJSON points
         if (properties.length > 0) {
-          console.log('Adding submitted properties');
+          console.log('  📍 Adding submitted properties');
           addPropertyLayers();
         }
 
         // 7. Add demo GeoJSON points if no submitted properties
         if (properties.length === 0) {
-          console.log('Adding demo GeoJSON points for all layers view');
+          console.log('  📍 Adding demo GeoJSON points for all layers view');
           addGeoJSONPointsLayer();
         }
       } else {
         // For specific layer types, add background layers first
+        console.log(`🎯 Adding specific layer type: ${layerType}`);
+        
         if (layerType === 'parcels' || layerType === 'points' || layerType === 'clusters' || layerType === 'heatmap') {
           // Add Texas boundary first (background)
           if (comprehensiveData?.texasBoundary) {
@@ -277,7 +290,7 @@ export const Map: React.FC<MapProps> = ({
         }
       }
 
-      console.log(`✅ Added layers for layerType: ${layerType}`);
+      console.log(`✅ Completed adding layers for layerType: ${layerType}`);
 
       // Force a repaint to ensure layers are visible immediately
       setTimeout(() => {
@@ -285,73 +298,85 @@ export const Map: React.FC<MapProps> = ({
           map.current.triggerRepaint();
           console.log('🔄 Forced map repaint');
         }
-      }, 100);
+      }, 200); // Increased timeout to ensure proper rendering
     } catch (error) {
-      console.error('Error adding layers:', error);
+      console.error('❌ Error adding layers:', error);
     }
   };
 
   const addTravisCountyParcels = () => {
     if (!map.current || !comprehensiveData?.parcels || comprehensiveData.parcels.length === 0) return;
 
-    console.log('Adding Travis County parcels:', comprehensiveData.parcels.length);
+    console.log('🗺️ Adding Travis County parcels...', comprehensiveData.parcels.length);
 
-    // Create GeoJSON for Travis County parcels
-    const parcelGeojson: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: comprehensiveData.parcels.map(parcel => ({
-        type: 'Feature' as const,
-        geometry: parcel.geometry,
-        properties: {
-          id: parcel.PROP_ID,
-          address: parcel.SITE_ADDR,
-          marketValue: parcel.TOTAL_VAL || 0,
-          owner: parcel.OWNER_NAME,
-          propertyType: parcel.PROP_TYPE || 'residential',
-          squareFootage: parcel.SQ_FT,
-          yearBuilt: parcel.YEAR_BUILT,
-          bedrooms: parcel.BEDROOMS,
-          bathrooms: parcel.BATHROOMS,
-          isParcel: true
+    try {
+      // Check if source already exists
+      if (map.current.getSource('travis-parcels')) {
+        console.log('  ⚠️ Travis parcels source already exists, skipping');
+        return;
+      }
+
+      // Create GeoJSON for Travis County parcels
+      const parcelGeojson: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: comprehensiveData.parcels.map(parcel => ({
+          type: 'Feature' as const,
+          geometry: parcel.geometry,
+          properties: {
+            id: parcel.PROP_ID,
+            address: parcel.SITE_ADDR,
+            marketValue: parcel.TOTAL_VAL || 0,
+            owner: parcel.OWNER_NAME,
+            propertyType: parcel.PROP_TYPE || 'residential',
+            squareFootage: parcel.SQ_FT,
+            yearBuilt: parcel.YEAR_BUILT,
+            bedrooms: parcel.BEDROOMS,
+            bathrooms: parcel.BATHROOMS,
+            isParcel: true
+          }
+        }))
+      };
+
+      // Add parcel source
+      map.current.addSource('travis-parcels', {
+        type: 'geojson',
+        data: parcelGeojson
+      });
+
+      // Add parcel fill layer
+      map.current.addLayer({
+        id: 'travis-parcels-fill',
+        type: 'fill',
+        source: 'travis-parcels',
+        paint: {
+          'fill-color': '#3b82f6',
+          'fill-opacity': 0.3,
+          'fill-outline-color': '#1e40af'
         }
-      }))
-    };
+      });
 
-    // Add parcel source
-    map.current.addSource('travis-parcels', {
-      type: 'geojson',
-      data: parcelGeojson
-    });
+      // Add parcel boundary layer
+      map.current.addLayer({
+        id: 'travis-parcels-boundary',
+        type: 'line',
+        source: 'travis-parcels',
+        paint: {
+          'line-color': '#1e40af',
+          'line-width': 1,
+          'line-opacity': 0.6
+        }
+      });
 
-    // Add parcel fill layer
-    map.current.addLayer({
-      id: 'travis-parcels-fill',
-      type: 'fill',
-      source: 'travis-parcels',
-      paint: {
-        'fill-color': 'rgba(59, 130, 246, 0.1)',
-        'fill-outline-color': 'rgba(59, 130, 246, 0.3)',
-        'fill-opacity': 0.3
-      }
-    });
+      // Add hover effects and click handlers
+      addHoverEffects('travis-parcels-fill');
+      addHoverEffects('travis-parcels-boundary');
+      addClickHandlers('travis-parcels-fill');
+      addClickHandlers('travis-parcels-boundary');
 
-    // Add parcel boundaries
-    map.current.addLayer({
-      id: 'travis-parcels-boundaries',
-      type: 'line',
-      source: 'travis-parcels',
-      paint: {
-        'line-color': '#3b82f6',
-        'line-width': 1,
-        'line-opacity': 0.6
-      }
-    });
-
-    // Add hover effects and click handlers
-    addHoverEffects('travis-parcels-fill');
-    addHoverEffects('travis-parcels-boundaries');
-    addClickHandlers('travis-parcels-fill');
-    addClickHandlers('travis-parcels-boundaries');
+      console.log('✅ Travis County parcels added successfully');
+    } catch (error) {
+      console.error('❌ Error adding Travis County parcels:', error);
+    }
   };
 
   const addTexasBoundary = (texasBoundary: TexasBoundary) => {
@@ -360,6 +385,12 @@ export const Map: React.FC<MapProps> = ({
     console.log('🗺️ Adding Texas boundary...');
 
     try {
+      // Check if source already exists
+      if (map.current.getSource('texas-boundary')) {
+        console.log('  ⚠️ Texas boundary source already exists, skipping');
+        return;
+      }
+
       // Add Texas boundary source
       map.current.addSource('texas-boundary', {
         type: 'geojson',
@@ -397,6 +428,12 @@ export const Map: React.FC<MapProps> = ({
     console.log('🗺️ Adding county boundaries...', counties.length);
 
     try {
+      // Check if source already exists
+      if (map.current.getSource('county-boundaries')) {
+        console.log('  ⚠️ County boundaries source already exists, skipping');
+        return;
+      }
+
       // Add county boundaries source
       map.current.addSource('county-boundaries', {
         type: 'geojson',
@@ -435,246 +472,255 @@ export const Map: React.FC<MapProps> = ({
   const addAddresses = (addresses: AddressPoint[]) => {
     if (!map.current) return;
 
-    const geojson: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: addresses.map(address => ({
-        type: 'Feature' as const,
-        geometry: address.geometry,
-        properties: {
-          id: address.id,
-          address: address.address,
-          city: address.city,
-          state: address.state,
-          zip: address.zip
+    console.log('🗺️ Adding addresses...', addresses.length);
+
+    try {
+      // Check if source already exists
+      if (map.current.getSource('addresses')) {
+        console.log('  ⚠️ Addresses source already exists, skipping');
+        return;
+      }
+
+      const geojson: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: addresses.map(address => ({
+          type: 'Feature' as const,
+          geometry: address.geometry,
+          properties: {
+            id: address.id,
+            address: address.address,
+            city: address.city,
+            state: address.state,
+            zip: address.zip
+          }
+        }))
+      };
+
+      map.current.addSource('addresses', {
+        type: 'geojson',
+        data: geojson
+      });
+
+      map.current.addLayer({
+        id: 'addresses',
+        type: 'circle',
+        source: 'addresses',
+        paint: {
+          'circle-radius': 2,
+          'circle-color': '#ef4444',
+          'circle-opacity': 0.7
         }
-      }))
-    };
+      });
 
-    map.current.addSource('addresses', {
-      type: 'geojson',
-      data: geojson
-    });
-
-    map.current.addLayer({
-      id: 'addresses',
-      type: 'circle',
-      source: 'addresses',
-      paint: {
-        'circle-radius': 2,
-        'circle-color': '#ef4444',
-        'circle-opacity': 0.7
-      }
-    });
-
-    // Add hover effects for addresses
-    map.current.on('mouseenter', 'addresses', (e) => {
-      if (map.current) {
-        map.current.getCanvas().style.cursor = 'pointer';
-      }
-      
-      if (e.features && e.features[0] && popup.current) {
-        const feature = e.features[0];
-        const coordinates = (feature.geometry as any).coordinates.slice();
+      // Add hover effects for addresses
+      map.current.on('mouseenter', 'addresses', (e) => {
+        if (map.current) {
+          map.current.getCanvas().style.cursor = 'pointer';
+        }
         
-        const description = `
-          <div class="p-2">
-            <h3 class="font-semibold text-gray-900">Address Point</h3>
-            <p class="text-sm text-gray-600">${feature.properties?.address || 'Unknown Address'}</p>
-            <p class="text-sm text-gray-600">${feature.properties?.city}, ${feature.properties?.state} ${feature.properties?.zip}</p>
-          </div>
-        `;
-        
-        popup.current
-          .setLngLat(coordinates)
-          .setHTML(description)
-          .addTo(map.current!);
-      }
-    });
+        if (e.features && e.features[0] && popup.current) {
+          const feature = e.features[0];
+          const coordinates = (feature.geometry as any).coordinates.slice();
+          
+          const description = `
+            <div class="p-2">
+              <h3 class="font-semibold text-gray-900">Address Point</h3>
+              <p class="text-sm text-gray-600">${feature.properties?.address || 'Unknown Address'}</p>
+              <p class="text-sm text-gray-600">${feature.properties?.city}, ${feature.properties?.state} ${feature.properties?.zip}</p>
+            </div>
+          `;
+          
+          popup.current
+            .setLngLat(coordinates)
+            .setHTML(description)
+            .addTo(map.current!);
+        }
+      });
 
-    map.current.on('mouseleave', 'addresses', () => {
-      if (map.current) {
-        map.current.getCanvas().style.cursor = '';
-      }
-      if (popup.current) {
-        popup.current.remove();
-      }
-    });
+      map.current.on('mouseleave', 'addresses', () => {
+        if (map.current) {
+          map.current.getCanvas().style.cursor = '';
+        }
+        if (popup.current) {
+          popup.current.remove();
+        }
+      });
 
-    console.log('✅ Addresses added');
+      console.log('✅ Addresses added successfully');
+    } catch (error) {
+      console.error('❌ Error adding addresses:', error);
+    }
   };
 
   const addPropertyLayers = () => {
     if (!map.current) return;
 
-    // Separate properties into polygons and points
-    const polygonProperties = properties.filter(property => 
-      property.geometry && property.geometry.type === 'Polygon'
-    );
-    const pointProperties = properties.filter(property => 
-      !property.geometry || property.geometry.type !== 'Polygon'
-    );
+    console.log('🗺️ Adding property layers...', properties.length);
 
-    // Add polygon layers (for Travis County parcels)
-    if (polygonProperties.length > 0) {
-      const polygonGeojson: GeoJSON.FeatureCollection = {
-        type: 'FeatureCollection',
-        features: polygonProperties.map(property => ({
-          type: 'Feature' as const,
-          geometry: property.geometry as GeoJSON.Polygon,
-          properties: {
-            id: property.id,
-            address: property.address,
-            propertyType: property.propertyType,
-            marketValue: property.marketValue,
-            owner: property.owner,
-            city: property.city,
-            state: property.state,
-            zipCode: property.zipCode
-          }
-        }))
-      };
+    try {
+      // Separate properties into polygons and points
+      const polygonProperties = properties.filter(property => 
+        property.geometry && property.geometry.type === 'Polygon'
+      );
+      const pointProperties = properties.filter(property => 
+        !property.geometry || property.geometry.type !== 'Polygon'
+      );
 
-      // Add polygon source
-      map.current.addSource('properties-polygons', {
-        type: 'geojson',
-        data: polygonGeojson
-      });
+      // Add polygon layers (for Travis County parcels)
+      if (polygonProperties.length > 0) {
+        // Check if source already exists
+        if (map.current.getSource('properties-polygons')) {
+          console.log('  ⚠️ Properties polygons source already exists, skipping');
+        } else {
+          const polygonGeojson: GeoJSON.FeatureCollection = {
+            type: 'FeatureCollection',
+            features: polygonProperties.map(property => ({
+              type: 'Feature' as const,
+              geometry: property.geometry as GeoJSON.Polygon,
+              properties: {
+                id: property.id,
+                address: property.address,
+                propertyType: property.propertyType,
+                marketValue: property.marketValue,
+                owner: property.owner,
+                city: property.city,
+                state: property.state,
+                zipCode: property.zipCode
+              }
+            }))
+          };
 
-      // Add parcel fill layer
-      map.current.addLayer({
-        id: 'properties-polygons',
-        type: 'fill',
-        source: 'properties-polygons',
-        paint: {
-          'fill-color': [
-            'match',
-            ['get', 'propertyType'],
-            'residential', 'rgba(59, 130, 246, 0.3)',
-            'commercial', 'rgba(16, 185, 129, 0.3)',
-            'industrial', 'rgba(245, 158, 11, 0.3)',
-            'agricultural', 'rgba(139, 92, 246, 0.3)',
-            'vacant', 'rgba(107, 114, 128, 0.3)',
-            'rgba(59, 130, 246, 0.3)'
-          ],
-          'fill-outline-color': [
-            'match',
-            ['get', 'propertyType'],
-            'residential', '#3b82f6',
-            'commercial', '#10b981',
-            'industrial', '#f59e0b',
-            'agricultural', '#8b5cf6',
-            'vacant', '#6b7280',
-            '#3b82f6'
-          ],
-          'fill-opacity': 0.6
+          // Add polygon source
+          map.current.addSource('properties-polygons', {
+            type: 'geojson',
+            data: polygonGeojson
+          });
+
+          // Add parcel fill layer
+          map.current.addLayer({
+            id: 'properties-polygons',
+            type: 'fill',
+            source: 'properties-polygons',
+            paint: {
+              'fill-color': [
+                'match',
+                ['get', 'propertyType'],
+                'residential', 'rgba(59, 130, 246, 0.3)',
+                'commercial', 'rgba(16, 185, 129, 0.3)',
+                'industrial', 'rgba(245, 158, 11, 0.3)',
+                'agricultural', 'rgba(139, 92, 246, 0.3)',
+                'vacant', 'rgba(107, 114, 128, 0.3)',
+                'rgba(59, 130, 246, 0.3)'
+              ],
+              'fill-outline-color': [
+                'match',
+                ['get', 'propertyType'],
+                'residential', '#3b82f6',
+                'commercial', '#10b981',
+                'industrial', '#f59e0b',
+                'agricultural', '#8b5cf6',
+                'vacant', '#6b7280',
+                '#3b82f6'
+              ],
+              'fill-opacity': 0.6
+            }
+          });
+          
+          // Add parcel boundaries
+          map.current.addLayer({
+            id: 'parcel-boundaries',
+            type: 'line',
+            source: 'properties-polygons',
+            paint: {
+              'line-color': [
+                'match',
+                ['get', 'propertyType'],
+                'residential', '#3b82f6',
+                'commercial', '#10b981',
+                'industrial', '#f59e0b',
+                'agricultural', '#8b5cf6',
+                'vacant', '#6b7280',
+                '#3b82f6'
+              ],
+              'line-width': 1,
+              'line-opacity': 0.8
+            }
+          });
+
+          // Add hover effects and click handlers
+          addHoverEffects('properties-polygons');
+          addHoverEffects('parcel-boundaries');
+          addClickHandlers('properties-polygons');
+          addClickHandlers('parcel-boundaries');
         }
-      });
-      
-      // Add parcel boundaries
-      map.current.addLayer({
-        id: 'parcel-boundaries',
-        type: 'line',
-        source: 'properties-polygons',
-        paint: {
-          'line-color': [
-            'match',
-            ['get', 'propertyType'],
-            'residential', '#3b82f6',
-            'commercial', '#10b981',
-            'industrial', '#f59e0b',
-            'agricultural', '#8b5cf6',
-            'vacant', '#6b7280',
-            '#3b82f6'
-          ],
-          'line-width': 1,
-          'line-opacity': 0.8
-        }
-      });
+      }
 
-      addHoverEffects('properties-polygons');
-      addHoverEffects('parcel-boundaries');
-      addClickHandlers('properties-polygons');
-      addClickHandlers('parcel-boundaries');
+      // Add point layers (for submitted properties)
+      if (pointProperties.length > 0) {
+        // Check if source already exists
+        if (map.current.getSource('properties-points')) {
+          console.log('  ⚠️ Properties points source already exists, skipping');
+        } else {
+          const pointGeojson: GeoJSON.FeatureCollection = {
+            type: 'FeatureCollection',
+            features: pointProperties.map(property => ({
+              type: 'Feature' as const,
+              geometry: {
+                type: 'Point' as const,
+                coordinates: [property.coordinates.lng, property.coordinates.lat]
+              },
+              properties: {
+                id: property.id,
+                address: property.address,
+                propertyType: property.propertyType,
+                marketValue: property.marketValue,
+                owner: property.owner,
+                city: property.city,
+                state: property.state,
+                zipCode: property.zipCode
+              }
+            }))
+          };
+
+          // Add point source
+          map.current.addSource('properties-points', {
+            type: 'geojson',
+            data: pointGeojson
+          });
+
+          // Add point symbols
+          map.current.addLayer({
+            id: 'submitted-properties',
+            type: 'circle',
+            source: 'properties-points',
+            paint: {
+              'circle-radius': 8,
+              'circle-color': [
+                'match',
+                ['get', 'propertyType'],
+                'residential', '#ef4444',
+                'commercial', '#10b981',
+                'industrial', '#f59e0b',
+                'agricultural', '#8b5cf6',
+                'vacant', '#6b7280',
+                '#ef4444'
+              ],
+              'circle-stroke-color': '#ffffff',
+              'circle-stroke-width': 2,
+              'circle-opacity': 0.8
+            }
+          });
+
+          // Add hover effects and click handlers
+          addHoverEffects('submitted-properties');
+          addClickHandlers('submitted-properties');
+        }
+      }
+
+      console.log('✅ Property layers added successfully');
+    } catch (error) {
+      console.error('❌ Error adding property layers:', error);
     }
-
-    // Add point layers (for submitted properties)
-    if (pointProperties.length > 0) {
-      console.log('Adding submitted properties as markers:', pointProperties.length);
-      console.log('Sample submitted property:', pointProperties[0]);
-      
-      const pointGeojson: GeoJSON.FeatureCollection = {
-        type: 'FeatureCollection',
-        features: pointProperties.map(property => ({
-          type: 'Feature' as const,
-          geometry: {
-            type: 'Point' as const,
-            coordinates: [property.coordinates.lng, property.coordinates.lat]
-          },
-          properties: {
-            id: property.id,
-            address: property.address,
-            propertyType: property.propertyType,
-            marketValue: property.marketValue,
-            owner: property.owner,
-            city: property.city,
-            state: property.state,
-            zipCode: property.zipCode,
-            isSubmitted: true // Flag to identify submitted properties
-          }
-        }))
-      };
-
-      // Add point source
-      map.current.addSource('properties-points', {
-        type: 'geojson',
-        data: pointGeojson
-      });
-
-      // Add submitted property markers
-      map.current.addLayer({
-        id: 'submitted-properties',
-        type: 'circle',
-        source: 'properties-points',
-        paint: {
-          'circle-radius': 12,
-          'circle-color': '#ef4444', // Red for submitted properties
-          'circle-stroke-width': 3,
-          'circle-stroke-color': '#ffffff',
-          'circle-opacity': 0.9
-        }
-      });
-
-      // Add a symbol layer for better visibility
-      map.current.addLayer({
-        id: 'submitted-properties-symbols',
-        type: 'symbol',
-        source: 'properties-points',
-        layout: {
-          'text-field': ['get', 'address'],
-          'text-font': ['Open Sans Regular'],
-          'text-size': 12,
-          'text-offset': [0, 1.8],
-          'text-anchor': 'top',
-          'icon-image': 'marker-15', // Default Mapbox marker icon
-          'icon-size': 1.5,
-          'icon-allow-overlap': true
-        },
-        paint: {
-          'text-color': '#1f2937',
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1
-        }
-      });
-
-      addHoverEffects('submitted-properties');
-      addHoverEffects('submitted-properties-symbols');
-      addClickHandlers('submitted-properties');
-      addClickHandlers('submitted-properties-symbols');
-    }
-
-    console.log('✅ Property layers added successfully');
-    console.log(`  - ${polygonProperties.length} polygon properties (parcels)`);
-    console.log(`  - ${pointProperties.length} point properties (submitted)`);
   };
 
   const addGeoJSONPointsLayer = () => {
@@ -1184,73 +1230,270 @@ export const Map: React.FC<MapProps> = ({
   const addBuildingFootprints = (buildings: BuildingFootprint[]) => {
     if (!map.current) return;
 
-    console.log('Adding building footprints:', buildings.length);
+    console.log('🗺️ Adding building footprints...', buildings.length);
 
-    // Create GeoJSON for building footprints
-    const buildingGeojson: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: buildings.map(building => ({
-        type: 'Feature' as const,
-        geometry: building.geometry,
-        properties: {
-          id: building.id,
-          height: building.height,
-          confidence: building.confidence,
-          area: building.area,
-          building: building.properties.building,
-          amenity: building.properties.amenity,
-          shop: building.properties.shop,
-          office: building.properties.office,
-          residential: building.properties.residential,
-          isBuilding: true
+    try {
+      // Check if source already exists
+      if (map.current.getSource('buildings')) {
+        console.log('  ⚠️ Buildings source already exists, skipping');
+        return;
+      }
+
+      const buildingGeojson: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: buildings.map(building => ({
+          type: 'Feature' as const,
+          geometry: building.geometry,
+          properties: {
+            id: building.id,
+            height: building.height,
+            confidence: building.confidence,
+            area: building.area,
+            building: building.properties.building,
+            amenity: building.properties.amenity,
+            shop: building.properties.shop,
+            office: building.properties.office,
+            residential: building.properties.residential,
+            isBuilding: true
+          }
+        }))
+      };
+
+      map.current.addSource('buildings', {
+        type: 'geojson',
+        data: buildingGeojson
+      });
+
+      // Add building fill layer with enhanced styling
+      map.current.addLayer({
+        id: 'buildings-fill',
+        type: 'fill',
+        source: 'buildings',
+        paint: {
+          'fill-color': [
+            'case',
+            ['==', ['get', 'residential'], 'yes'], '#3b82f6', // Blue for residential
+            ['==', ['get', 'shop'], 'yes'], '#10b981',        // Green for shops
+            ['==', ['get', 'office'], 'yes'], '#f59e0b',      // Orange for offices
+            ['==', ['get', 'amenity'], 'yes'], '#8b5cf6',     // Purple for amenities
+            '#6b7280'                                          // Gray for unknown
+          ],
+          'fill-opacity': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            10, 0.3,  // More transparent at low zoom
+            16, 0.7   // More opaque at high zoom
+          ],
+          'fill-outline-color': [
+            'case',
+            ['==', ['get', 'residential'], 'yes'], '#1e40af',
+            ['==', ['get', 'shop'], 'yes'], '#065f46',
+            ['==', ['get', 'office'], 'yes'], '#d97706',
+            ['==', ['get', 'amenity'], 'yes'], '#5b21b6',
+            '#374151'
+          ]
         }
-      }))
-    };
+      });
 
-    // Add building source
-    map.current.addSource('buildings', {
-      type: 'geojson',
-      data: buildingGeojson
-    });
+      // Add building boundaries with dynamic styling
+      map.current.addLayer({
+        id: 'buildings-boundaries',
+        type: 'line',
+        source: 'buildings',
+        paint: {
+          'line-color': [
+            'case',
+            ['==', ['get', 'residential'], 'yes'], '#1e40af',
+            ['==', ['get', 'shop'], 'yes'], '#065f46',
+            ['==', ['get', 'office'], 'yes'], '#d97706',
+            ['==', ['get', 'amenity'], 'yes'], '#5b21b6',
+            '#374151'
+          ],
+          'line-width': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            10, 0.5,  // Thinner at low zoom
+            16, 2     // Thicker at high zoom
+          ],
+          'line-opacity': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            10, 0.4,
+            16, 0.9
+          ]
+        }
+      });
 
-    // Add building fill layer
-    map.current.addLayer({
-      id: 'buildings-fill',
-      type: 'fill',
-      source: 'buildings',
-      paint: {
-        'fill-color': [
-          'case',
-          ['==', ['get', 'residential'], 'yes'], '#3b82f6',
-          ['==', ['get', 'shop'], 'yes'], '#10b981',
-          ['==', ['get', 'office'], 'yes'], '#f59e0b',
-          ['==', ['get', 'amenity'], 'yes'], '#8b5cf6',
-          '#6b7280'
-        ],
-        'fill-opacity': 0.7,
-        'fill-outline-color': '#1f2937'
-      }
-    });
+      // Add building height visualization (3D effect)
+      map.current.addLayer({
+        id: 'buildings-height',
+        type: 'fill-extrusion',
+        source: 'buildings',
+        paint: {
+          'fill-extrusion-color': [
+            'case',
+            ['==', ['get', 'residential'], 'yes'], '#3b82f6',
+            ['==', ['get', 'shop'], 'yes'], '#10b981',
+            ['==', ['get', 'office'], 'yes'], '#f59e0b',
+            ['==', ['get', 'amenity'], 'yes'], '#8b5cf6',
+            '#6b7280'
+          ],
+          'fill-extrusion-height': [
+            'case',
+            ['>', ['get', 'height'], 0],
+            ['get', 'height'],
+            3  // Default height for unknown buildings
+          ],
+          'fill-extrusion-opacity': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            10, 0.1,  // Very transparent at low zoom
+            16, 0.6   // More visible at high zoom
+          ],
+          'fill-extrusion-base': 0
+        }
+      });
 
-    // Add building boundaries
-    map.current.addLayer({
-      id: 'buildings-boundaries',
-      type: 'line',
-      source: 'buildings',
-      paint: {
-        'line-color': '#1f2937',
-        'line-width': 1,
-        'line-opacity': 0.8
-      }
-    });
+      // Add building labels for important buildings
+      map.current.addLayer({
+        id: 'buildings-labels',
+        type: 'symbol',
+        source: 'buildings',
+        layout: {
+          'text-field': [
+            'case',
+            ['==', ['get', 'amenity'], 'yes'], ['get', 'amenity'],
+            ['==', ['get', 'shop'], 'yes'], ['get', 'shop'],
+            ['==', ['get', 'office'], 'yes'], ['get', 'office'],
+            ''
+          ],
+          'text-font': ['Open Sans Regular'],
+          'text-size': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            14, 8,   // Smaller at low zoom
+            16, 12   // Larger at high zoom
+          ],
+          'text-offset': [0, 0],
+          'text-anchor': 'center',
+          'text-allow-overlap': false,
+          'text-ignore-placement': false
+        },
+        paint: {
+          'text-color': '#1f2937',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1,
+          'text-opacity': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            14, 0,   // Hidden at low zoom
+            16, 0.8  // Visible at high zoom
+          ]
+        }
+      });
 
-    // Add hover effects and click handlers
-    addHoverEffects('buildings-fill');
-    addHoverEffects('buildings-boundaries');
-    addClickHandlers('buildings-fill');
-    addClickHandlers('buildings-boundaries');
+      // Enhanced hover effects
+      map.current.on('mouseenter', 'buildings-fill', (e) => {
+        if (map.current) {
+          map.current.getCanvas().style.cursor = 'pointer';
+        }
+        
+        if (e.features && e.features[0] && popup.current) {
+          const feature = e.features[0];
+          const properties = feature.properties;
+          
+          // Calculate center point for popup
+          const coordinates = (feature.geometry as any).coordinates[0][0].slice();
+          
+          // Enhanced popup content
+          const buildingType = properties?.residential === 'yes' ? 'Residential' :
+                              properties?.shop === 'yes' ? 'Commercial' :
+                              properties?.office === 'yes' ? 'Office' :
+                              properties?.amenity === 'yes' ? 'Amenity' : 'Building';
+          
+          const height = properties?.height && properties.height > 0 ? `${properties.height}m` : 'Unknown';
+          const area = properties?.area ? `${Math.round(properties.area)}m²` : 'Unknown';
+          
+          const description = `
+            <div class="p-4 max-w-xs bg-white rounded-lg shadow-lg border border-gray-200">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-semibold text-gray-900 text-sm">${buildingType}</h3>
+                <span class="px-2 py-1 text-xs font-medium rounded-full ${
+                  properties?.residential === 'yes' ? 'bg-blue-100 text-blue-800' :
+                  properties?.shop === 'yes' ? 'bg-green-100 text-green-800' :
+                  properties?.office === 'yes' ? 'bg-orange-100 text-orange-800' :
+                  properties?.amenity === 'yes' ? 'bg-purple-100 text-purple-800' :
+                  'bg-gray-100 text-gray-800'
+                }">${buildingType}</span>
+              </div>
+              <div class="space-y-1 text-xs text-gray-600">
+                <p><span class="font-medium">Height:</span> ${height}</p>
+                <p><span class="font-medium">Area:</span> ${area}</p>
+                ${properties?.confidence && properties.confidence > 0 ? `<p><span class="font-medium">Confidence:</span> ${Math.round(properties.confidence * 100)}%</p>` : ''}
+                <p class="text-blue-600 text-xs mt-2">Click for more details</p>
+              </div>
+            </div>
+          `;
+          
+          popup.current
+            .setLngLat(coordinates)
+            .setHTML(description)
+            .addTo(map.current!);
+        }
+      });
 
-    console.log('✅ Building footprints added successfully');
+      map.current.on('mouseleave', 'buildings-fill', () => {
+        if (map.current) {
+          map.current.getCanvas().style.cursor = '';
+        }
+        if (popup.current) {
+          popup.current.remove();
+        }
+      });
+
+      // Enhanced click handlers
+      map.current.on('click', 'buildings-fill', (e) => {
+        if (e.features && e.features[0]) {
+          const feature = e.features[0];
+          console.log('🏢 Building clicked:', feature.properties);
+          
+          // Add visual feedback
+          if (map.current) {
+            map.current.getCanvas().style.cursor = 'pointer';
+            setTimeout(() => {
+              if (map.current) {
+                map.current.getCanvas().style.cursor = '';
+              }
+            }, 200);
+          }
+          
+          // You can add more building-specific actions here
+          // For example, show detailed building information
+          const buildingInfo = {
+            id: feature.properties?.id,
+            type: feature.properties?.residential === 'yes' ? 'Residential' :
+                  feature.properties?.shop === 'yes' ? 'Commercial' :
+                  feature.properties?.office === 'yes' ? 'Office' :
+                  feature.properties?.amenity === 'yes' ? 'Amenity' : 'Building',
+            height: feature.properties?.height,
+            area: feature.properties?.area,
+            confidence: feature.properties?.confidence
+          };
+          
+          console.log('🏢 Building details:', buildingInfo);
+        }
+      });
+
+      console.log('✅ Building footprints added successfully with enhanced styling');
+    } catch (error) {
+      console.error('❌ Error adding building footprints:', error);
+    }
   };
 
   // Removed addEnrichedProperties function
@@ -1319,14 +1562,29 @@ export const Map: React.FC<MapProps> = ({
       if (e.features && e.features.length > 0) {
         const feature = e.features[0];
         
-        // Check if it's an enriched property
-        // Removed enriched properties functionality
+        console.log('🎯 Marker clicked:', feature.properties);
+        
+        // Check if it's a property (submitted or demo)
         if (onPropertyClick) {
-          // Handle regular properties
           const propertyId = feature.properties?.id;
           const property = properties.find(p => p.id === propertyId);
+          
           if (property) {
+            console.log('🏠 Property found, triggering click handler');
             onPropertyClick(property);
+            
+            // Add visual feedback - briefly highlight the marker
+            if (map.current) {
+              // Change cursor style temporarily
+              map.current.getCanvas().style.cursor = 'pointer';
+              setTimeout(() => {
+                if (map.current) {
+                  map.current.getCanvas().style.cursor = '';
+                }
+              }, 200);
+            }
+          } else {
+            console.log('⚠️ Property not found for ID:', propertyId);
           }
         }
       }
@@ -1347,8 +1605,12 @@ export const Map: React.FC<MapProps> = ({
       console.log('🎯 Map ready, re-adding layers...');
       console.log('Current layer type:', layerType);
       
-      // Force a complete layer refresh
-      addAllLayers();
+      // Add a small delay to ensure map is fully ready
+      setTimeout(() => {
+        if (map.current && map.current.isStyleLoaded()) {
+          addAllLayers();
+        }
+      }, 50);
     } else {
       console.log('⏳ Map not ready yet, waiting...');
     }
@@ -1364,6 +1626,95 @@ export const Map: React.FC<MapProps> = ({
       });
     }
   }, [center, zoom]);
+
+  // Listen for zoom to property events
+  useEffect(() => {
+    const handleZoomToProperty = (event: CustomEvent) => {
+      console.log('🗺️ Zoom event received:', event.detail);
+      
+      if (!map.current) {
+        console.error('❌ Map not available for zoom');
+        return;
+      }
+      
+      if (!event.detail?.coordinates) {
+        console.error('❌ No coordinates provided for zoom');
+        return;
+      }
+      
+      const { coordinates, property } = event.detail;
+      console.log('🗺️ Attempting to zoom to property:', property?.address, 'at coordinates:', coordinates);
+      
+      // Check if map is ready
+      if (!map.current.isStyleLoaded()) {
+        console.log('⏳ Map not fully loaded, waiting...');
+        // Wait for map to be ready
+        const checkMapReady = () => {
+          if (map.current && map.current.isStyleLoaded()) {
+            console.log('✅ Map is now ready, proceeding with zoom');
+            performZoom(coordinates, property);
+          } else {
+            setTimeout(checkMapReady, 100);
+          }
+        };
+        checkMapReady();
+        return;
+      }
+      
+      performZoom(coordinates, property);
+    };
+
+    const performZoom = (coordinates: { lat: number; lng: number }, property?: any) => {
+      if (!map.current) return;
+      
+      console.log('🎯 Performing zoom to:', coordinates);
+      
+      try {
+        // More dramatic zoom effect for View on Map button
+        map.current.easeTo({
+          center: [coordinates.lng, coordinates.lat],
+          zoom: 18, // Closer zoom for better detail
+          duration: 2000, // Longer animation for dramatic effect
+          essential: true // This animation is considered essential with respect to prefers-reduced-motion
+        });
+        
+        console.log('✅ Zoom animation started');
+        
+        // Add a brief highlight effect to the property marker
+        setTimeout(() => {
+          if (map.current) {
+            // Flash the map briefly to draw attention
+            const canvas = map.current.getCanvas();
+            canvas.style.filter = 'brightness(1.2)';
+            setTimeout(() => {
+              if (map.current) {
+                map.current.getCanvas().style.filter = '';
+              }
+            }, 300);
+          }
+        }, 1000);
+      } catch (error) {
+        console.error('❌ Error during zoom:', error);
+        
+        // Fallback: try immediate zoom without animation
+        try {
+          map.current.setCenter([coordinates.lng, coordinates.lat]);
+          map.current.setZoom(18);
+          console.log('✅ Fallback zoom completed');
+        } catch (fallbackError) {
+          console.error('❌ Fallback zoom also failed:', fallbackError);
+        }
+      }
+    };
+
+    // Add event listener
+    document.addEventListener('zoomToProperty', handleZoomToProperty as EventListener);
+
+    // Cleanup
+    return () => {
+      document.removeEventListener('zoomToProperty', handleZoomToProperty as EventListener);
+    };
+  }, []);
 
   return (
     <div className={`relative w-full h-full ${className}`}>

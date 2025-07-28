@@ -13,27 +13,19 @@ import { addProperty, loadProperties, deleteProperty } from './services/property
 
 function App() {
   const [currentLayer, setCurrentLayer] = useState<MapLayerType>('all');
-  const [showSubmissionForm, setShowSubmissionForm] = useState(false);
   const [submittedProperties, setSubmittedProperties] = useState<Property[]>([]);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
+  const [showSubmissionForm, setShowSubmissionForm] = useState(false);
   const [comprehensiveData, setComprehensiveData] = useState<ComprehensiveData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mapInstance, setMapInstance] = useState<mapboxgl.Map | null>(null); // Add map reference
 
-  // Filter state
+  // Filter state (expanded)
   const [filters, setFilters] = useState({
-    address: '',
-    propertyType: '',
-    minPrice: 0,
-    maxPrice: 0,
-    city: '',
-    state: '',
-    minYearBuilt: 0,
-    maxYearBuilt: 0,
-    minSquareFootage: 0,
-    maxSquareFootage: 0,
-    bedrooms: 0,
-    bathrooms: 0
+    address: '', propertyType: '', minPrice: 0, maxPrice: 0,
+    city: '', state: '', minYearBuilt: 0, maxYearBuilt: 0,
+    minSquareFootage: 0, maxSquareFootage: 0, bedrooms: 0, bathrooms: 0
   });
 
   // Map viewport state
@@ -153,17 +145,131 @@ function App() {
     }
   };
 
-  // Handle property click
+  // Handle property click from map or card
   const handlePropertyClick = (property: Property) => {
+    console.log('🏠 Property clicked:', property.address);
     setSelectedProperty(property);
     
-    // Center map on clicked property
+    // Zoom to the property location
     if (property.coordinates) {
-      setMapCenter({
-        lat: property.coordinates.lat,
-        lng: property.coordinates.lng
-      });
-      setMapZoom(16);
+      const mapElement = document.querySelector('.mapboxgl-map');
+      if (mapElement) {
+        // Trigger a custom event to zoom the map
+        const zoomEvent = new CustomEvent('zoomToProperty', {
+          detail: {
+            coordinates: property.coordinates,
+            property: property
+          }
+        });
+        mapElement.dispatchEvent(zoomEvent);
+      }
+    }
+  };
+
+  // Handle property card selection
+  const handlePropertyCardSelect = (property: Property) => {
+    console.log('📋 Property card selected:', property.address);
+    setSelectedProperty(property);
+    
+    // Zoom to the property location
+    if (property.coordinates) {
+      const mapElement = document.querySelector('.mapboxgl-map');
+      if (mapElement) {
+        // Trigger a custom event to zoom the map
+        const zoomEvent = new CustomEvent('zoomToProperty', {
+          detail: {
+            coordinates: property.coordinates,
+            property: property
+          }
+        });
+        mapElement.dispatchEvent(zoomEvent);
+      }
+    }
+  };
+
+  // Handle map ready
+  const handleMapReady = (map: mapboxgl.Map) => {
+    console.log('🗺️ Map is ready for use');
+    setMapInstance(map);
+  };
+
+  // Handle View on Map button click
+  const handleViewOnMap = (property: Property) => {
+    console.log('🗺️ View on Map clicked for:', property.address);
+    console.log('📍 Property coordinates:', property.coordinates);
+    
+    // Zoom to the property location with a more dramatic zoom
+    if (property.coordinates) {
+      console.log('🎯 Attempting to zoom to property...');
+      
+      // Try direct map method first
+      if (mapInstance) {
+        console.log('✅ Using direct map method for zoom');
+        try {
+          mapInstance.easeTo({
+            center: [property.coordinates.lng, property.coordinates.lat],
+            zoom: 18,
+            duration: 2000,
+            essential: true
+          });
+          console.log('✅ Direct zoom successful');
+          
+          // Set as selected property for visual feedback
+          setSelectedProperty(property);
+          
+          // Show notification
+          const notification = document.createElement('div');
+          notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+          notification.textContent = `Zoomed to ${property.address}`;
+          document.body.appendChild(notification);
+          
+          setTimeout(() => {
+            if (document.body.contains(notification)) {
+              document.body.removeChild(notification);
+            }
+          }, 2000);
+          
+          return;
+        } catch (error) {
+          console.error('❌ Direct zoom failed:', error);
+        }
+      }
+      
+      // Fallback to event method
+      console.log('🔄 Falling back to event method...');
+      const mapElement = document.querySelector('.mapboxgl-map');
+      console.log('🗺️ Map element found:', !!mapElement);
+      
+      if (mapElement) {
+        const zoomEvent = new CustomEvent('zoomToProperty', {
+          detail: {
+            coordinates: property.coordinates,
+            property: property
+          }
+        });
+        
+        console.log('📡 Dispatching zoomToProperty event with data:', zoomEvent.detail);
+        mapElement.dispatchEvent(zoomEvent);
+        
+        setSelectedProperty(property);
+        
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+        notification.textContent = `Zooming to ${property.address}`;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+          if (document.body.contains(notification)) {
+            document.body.removeChild(notification);
+          }
+        }, 2000);
+      } else {
+        console.error('❌ Map element not found');
+        alert('Map not found. Please refresh the page and try again.');
+      }
+    } else {
+      console.error('❌ Property has no coordinates');
+      alert('This property has no location data.');
     }
   };
 
@@ -371,6 +477,7 @@ function App() {
                   properties={submittedProperties}
                   onPropertyClick={handlePropertyClick}
                   comprehensiveData={comprehensiveData || undefined}
+                  onMapReady={handleMapReady}
                 />
               </div>
             </div>
@@ -391,6 +498,9 @@ function App() {
                       property={property}
                       onClose={() => setSelectedProperty(null)}
                       onDelete={() => handleDeleteProperty(property.id)}
+                      onSelect={() => handlePropertyCardSelect(property)}
+                      onViewOnMap={() => handleViewOnMap(property)}
+                      isSelected={selectedProperty?.id === property.id}
                     />
                   ))}
                 </div>
